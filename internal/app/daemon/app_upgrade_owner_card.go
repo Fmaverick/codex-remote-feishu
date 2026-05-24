@@ -114,6 +114,7 @@ func (a *App) upgradeOwnerFlowBlocksInputLocked() bool {
 func upgradeOwnerFlowAllowsAction(action control.Action) bool {
 	switch action.Kind {
 	case control.ActionStatus,
+		control.ActionWhere,
 		control.ActionUpgradeCommand,
 		control.ActionUpgradeOwnerFlow,
 		control.ActionDebugCommand,

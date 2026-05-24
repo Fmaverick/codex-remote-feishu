@@ -21,6 +21,19 @@ func TestParseFeishuTextActionRecognizesDebugCommand(t *testing.T) {
 	}
 }
 
+func TestParseFeishuTextActionRecognizesWhereCommand(t *testing.T) {
+	action, ok := ParseFeishuTextActionWithoutCatalog("/where")
+	if !ok {
+		t.Fatal("expected /where to be parsed")
+	}
+	if action.Kind != ActionWhere {
+		t.Fatalf("action kind = %q, want %q", action.Kind, ActionWhere)
+	}
+	if action.Text != "/where" {
+		t.Fatalf("action text = %q, want %q", action.Text, "/where")
+	}
+}
+
 func TestParseFeishuTextActionRecognizesAdminRootCommand(t *testing.T) {
 	action, ok := ParseFeishuTextActionWithoutCatalog("/admin")
 	if !ok {

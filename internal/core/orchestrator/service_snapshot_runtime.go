@@ -560,6 +560,10 @@ func (s *Service) ApplyInstanceConnected(instanceID string) []eventcontract.Even
 		}
 		attachEvents := s.attachHeadlessInstance(surface, inst, pending)
 		events = append(events, s.maybeFinalizePendingTargetPicker(surface, attachEvents, "")...)
+		if action, ok := s.consumePersonalDefaultFirstInput(instanceID); ok {
+			workspaceKey := normalizeWorkspaceClaimKey(firstNonEmpty(pending.WorkspaceKey, pending.ThreadCWD, s.surfaceCurrentWorkspaceKey(surface), inst.WorkspaceKey, inst.WorkspaceRoot))
+			events = append(events, s.enqueuePersonalDefaultFirstInput(surface, workspaceKey, action)...)
+		}
 	}
 	for _, surface := range s.findAttachedSurfaces(instanceID) {
 		events = append(events, s.dispatchNext(surface)...)

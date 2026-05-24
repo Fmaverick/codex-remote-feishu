@@ -1315,7 +1315,7 @@ func TestUseThreadDetachedAttachesFreeVisibleInstanceAndReplays(t *testing.T) {
 	}
 	var sawAttached, sawReplay bool
 	for _, event := range events {
-		if event.Notice != nil && event.Notice.Code == "attached" && strings.Contains(event.Notice.Text, "已接管工作区 /data/dl/droid") && !strings.Contains(event.Notice.Text, "已接管 droid") {
+		if event.Notice != nil && event.Notice.Code == "attached" && strings.Contains(event.Notice.Text, "已进入工作区 /data/dl/droid") && !strings.Contains(event.Notice.Text, "已接管 droid") {
 			sawAttached = true
 		}
 		if event.Block != nil && event.Block.Text == "全局 /use 的 replay" && event.Block.Final {

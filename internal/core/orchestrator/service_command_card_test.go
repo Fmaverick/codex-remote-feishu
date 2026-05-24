@@ -125,7 +125,7 @@ func TestCardOwnedReasoningApplyWithoutAttachmentShowsRecoveryCard(t *testing.T)
 		t.Fatalf("expected recovery card to keep attachment guidance in body area, got %#v", catalog)
 	}
 	summaryText := commandCatalogSummaryText(catalog)
-	if !strings.Contains(summaryText, "您没有接管任何工作区") || !strings.Contains(summaryText, "还没接管目标") {
+	if !strings.Contains(summaryText, "当前还没有进入聊天空间或项目") || !strings.Contains(summaryText, "还没接管目标") {
 		t.Fatalf("expected recovery summary to explain detached state, got %q", summaryText)
 	}
 	if len(catalog.Sections) != 1 || len(catalog.Sections[0].Entries) != 3 {

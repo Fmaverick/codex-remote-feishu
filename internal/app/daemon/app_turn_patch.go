@@ -74,6 +74,7 @@ func turnPatchEditingFlowAllowsAction(action control.Action) bool {
 func turnPatchTransactionAllowsAction(action control.Action) bool {
 	switch action.Kind {
 	case control.ActionStatus,
+		control.ActionWhere,
 		control.ActionListInstances,
 		control.ActionShowCommandHelp,
 		control.ActionShowCommandMenu,

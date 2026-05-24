@@ -207,6 +207,9 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
+		if events, handled := s.handlePersonalDefaultWorkspaceText(surface, action, text); handled {
+			return events
+		}
 		return notice(surface, "not_attached", s.notAttachedText(surface))
 	}
 	reviewSession := s.activeReviewSession(surface)
@@ -271,7 +274,7 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 	}
 	if !detour.Triggered && reviewSession == nil && !createThread && threadID == "" {
 		s.restoreStagedInputs(surface, stagedMessageIDs)
-		return notice(surface, "thread_not_ready", "当前还没有可发送的目标会话。请先 /use 重新选择会话；headless 模式可直接发送文本开启新会话（也可 /new 先进入待命），如需跟随 VS Code 请先 /mode vscode 再 /follow。")
+		return notice(surface, "thread_not_ready", s.threadNotReadyText(surface))
 	}
 	if strings.TrimSpace(cwd) == "" {
 		s.restoreStagedInputs(surface, stagedMessageIDs)
@@ -281,7 +284,7 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 		if createThread {
 			return notice(surface, "new_thread_cwd_missing", "当前无法获取新会话的工作目录，请先重新 /use 一个有工作目录的会话。")
 		}
-		return notice(surface, "thread_not_ready", "当前还没有可发送的目标会话。请先 /use 重新选择会话；headless 模式可直接发送文本开启新会话（也可 /new 先进入待命），如需跟随 VS Code 请先 /mode vscode 再 /follow。")
+		return notice(surface, "thread_not_ready", s.threadNotReadyText(surface))
 	}
 	events := s.maybeSealPlanProposalForInput(surface)
 	if detour.Triggered {

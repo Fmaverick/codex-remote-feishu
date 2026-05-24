@@ -26,7 +26,7 @@ func TestTextMessageDetachedNormalUsesWorkspaceWording(t *testing.T) {
 	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "not_attached" {
 		t.Fatalf("expected detached normal text to reject with not_attached, got %#v", events)
 	}
-	if !strings.Contains(events[0].Notice.Text, "您没有接管任何工作区") || strings.Contains(events[0].Notice.Text, "实例") {
+	if !strings.Contains(events[0].Notice.Text, "当前还没有进入聊天空间或项目") || strings.Contains(events[0].Notice.Text, "实例") {
 		t.Fatalf("expected workspace-first detached wording, got %#v", events[0].Notice)
 	}
 }

@@ -43,6 +43,7 @@ func (a *App) maybeHandleStandaloneCodexUpgradeActionLocked(ctx context.Context,
 func codexUpgradeAllowsAction(action control.Action) bool {
 	switch action.Kind {
 	case control.ActionStatus,
+		control.ActionWhere,
 		control.ActionUpgradeCommand,
 		control.ActionUpgradeOwnerFlow,
 		control.ActionDebugCommand,

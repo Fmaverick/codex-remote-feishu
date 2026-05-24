@@ -181,9 +181,9 @@ func (s *Service) surfaceAttachmentDisplayName(surface *state.SurfaceConsoleReco
 func (s *Service) attachedLeadText(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) string {
 	if s.surfaceUsesWorkspaceClaims(surface) {
 		if name := s.surfaceAttachmentDisplayName(surface, inst); name != "" {
-			return fmt.Sprintf("已接管工作区 %s。", name)
+			return fmt.Sprintf("已进入工作区 %s。", name)
 		}
-		return "已接管当前工作区。"
+		return "已进入当前工作区。"
 	}
 	if name := s.surfaceAttachmentDisplayName(surface, inst); name != "" {
 		return fmt.Sprintf("已接管 %s。", name)
@@ -193,9 +193,16 @@ func (s *Service) attachedLeadText(surface *state.SurfaceConsoleRecord, inst *st
 
 func (s *Service) notAttachedText(surface *state.SurfaceConsoleRecord) string {
 	if s.surfaceUsesWorkspaceClaims(surface) {
-		return "您没有接管任何工作区。请先 /list 选择工作区。"
+		return "当前还没有进入聊天空间或项目。私聊里可以直接发消息；需要切换项目时发送 /list。"
 	}
 	return "当前还没有接管任何实例。"
+}
+
+func (s *Service) threadNotReadyText(surface *state.SurfaceConsoleRecord) string {
+	if s.surfaceIsHeadless(surface) {
+		return "当前还没有可发送的会话。你可以直接发消息开启新会话，或用 /use 选择历史会话。"
+	}
+	return "当前还没有可发送的会话。请先在 VS Code 里聚焦一个会话，或用 /use 选择已知会话。"
 }
 
 func (s *Service) attachedTargetUnavailableText(surface *state.SurfaceConsoleRecord) string {

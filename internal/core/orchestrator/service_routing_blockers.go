@@ -62,6 +62,7 @@ func (s *Service) blockActionForActivePathPicker(surface *state.SurfaceConsoleRe
 	}
 	switch action.Kind {
 	case control.ActionStatus,
+		control.ActionWhere,
 		control.ActionTextMessage,
 		control.ActionImageMessage,
 		control.ActionFileMessage,
@@ -85,6 +86,7 @@ func (s *Service) blockActionForActiveTargetPicker(surface *state.SurfaceConsole
 	}
 	switch action.Kind {
 	case control.ActionStatus,
+		control.ActionWhere,
 		control.ActionReactionCreated,
 		control.ActionMessageRecalled,
 		control.ActionTargetPickerCancel:

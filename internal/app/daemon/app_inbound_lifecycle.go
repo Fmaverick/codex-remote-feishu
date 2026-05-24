@@ -179,6 +179,8 @@ func rejectedInboundActionLabel(action control.Action) (label, command string) {
 		return "查看实例", "/list"
 	case control.ActionStatus:
 		return "查看状态", "/status"
+	case control.ActionWhere:
+		return "查看当前位置", "/where"
 	case control.ActionStop:
 		return "停止", "/stop"
 	case control.ActionNewThread:

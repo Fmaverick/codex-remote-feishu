@@ -12,6 +12,7 @@ const (
 	FeishuCommandAdminSubcommand      = "admin_subcommand"
 	FeishuCommandList                 = "list"
 	FeishuCommandStatus               = "status"
+	FeishuCommandWhere                = "where"
 	FeishuCommandUse                  = "use"
 	FeishuCommandUseAll               = "useall"
 	FeishuCommandNew                  = "new"
@@ -724,6 +725,25 @@ var feishuCommandSpecs = []feishuCommandSpec{
 		},
 		menuExact: []feishuCommandMatch{
 			{alias: "status", action: Action{Kind: ActionStatus}},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandWhere,
+			GroupID:          FeishuCommandGroupCurrentWork,
+			Title:            "当前位置",
+			CanonicalSlash:   "/where",
+			CanonicalMenuKey: "where",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "用一行文字查看当前聊天空间、会话状态、backend 和配置。",
+			ShowInHelp:       true,
+			ShowInMenu:       false,
+		},
+		textExact: []feishuCommandMatch{
+			{alias: "/where", action: Action{Kind: ActionWhere}},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "where", action: Action{Kind: ActionWhere}},
 		},
 	},
 	{

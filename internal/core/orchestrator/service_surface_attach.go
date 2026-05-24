@@ -21,7 +21,7 @@ func (s *Service) attachWorkspaceWithOptions(surface *state.SurfaceConsoleRecord
 	}
 	currentWorkspace := s.surfaceCurrentWorkspaceKey(surface)
 	if surface.AttachedInstanceID != "" && currentWorkspace == workspaceKey {
-		return notice(surface, "workspace_already_attached", fmt.Sprintf("当前已接管工作区：%s。", workspaceKey))
+		return notice(surface, "workspace_already_attached", fmt.Sprintf("当前已在工作区：%s。", workspaceKey))
 	}
 	if owner := s.workspaceBusyOwnerForSurface(surface, workspaceKey); owner != nil {
 		return notice(surface, "workspace_busy", "目标 workspace 当前已被其他飞书会话接管，请等待对方 /detach。")
@@ -71,21 +71,21 @@ func (s *Service) attachWorkspaceWithOptions(surface *state.SurfaceConsoleRecord
 	}
 
 	noticeCode := "workspace_attached"
-	noticeText := fmt.Sprintf("已接管工作区 %s。请继续 /use 选择一个会话，或直接发送文本开启新会话（也可 /new 先进入待命）。", workspaceKey)
+	noticeText := fmt.Sprintf("已进入工作区 %s。可以直接发消息开启新会话，也可以用 /use 选择历史会话。", workspaceKey)
 	if currentWorkspace != "" && currentWorkspace != workspaceKey {
 		noticeCode = "workspace_switched"
-		noticeText = fmt.Sprintf("已切换到工作区 %s。请继续 /use 选择一个会话，或直接发送文本开启新会话（也可 /new 先进入待命）。", workspaceKey)
+		noticeText = fmt.Sprintf("已切换到工作区 %s。可以直接发消息开启新会话，也可以用 /use 选择历史会话。", workspaceKey)
 	}
 	visibleThreadCount := len(workspaceVisibleThreads(inst, workspaceKey))
 	if options.ResumeNotice {
 		noticeCode = "surface_resume_workspace_attached"
 		if visibleThreadCount == 0 {
-			noticeText = fmt.Sprintf("之前的会话暂未恢复，已先回到工作区 %s。当前还没有可见会话；你可以直接发送文本开启新会话（或 /new 先进入待命），也可稍后发送 /use。", workspaceKey)
+			noticeText = fmt.Sprintf("之前的会话暂未恢复，已先回到工作区 %s。这里还没有可见会话；你可以直接发消息开启新会话，也可以稍后发送 /use。", workspaceKey)
 		} else {
-			noticeText = fmt.Sprintf("之前的会话当前不可见，已先回到工作区 %s。请继续 /use 选择要恢复的会话，或直接发送文本开启新会话（也可 /new 先进入待命）。", workspaceKey)
+			noticeText = fmt.Sprintf("之前的会话当前不可见，已先回到工作区 %s。可以用 /use 选择要恢复的会话，或直接发消息开启新会话。", workspaceKey)
 		}
 	} else if visibleThreadCount == 0 {
-		noticeText = fmt.Sprintf("已接管工作区 %s。当前还没有可见会话；你可以直接发送文本开启新会话（或 /new 先进入待命），也可稍后发送 /use。", workspaceKey)
+		noticeText = fmt.Sprintf("已进入工作区 %s。这里还没有可见会话；你可以直接发消息开启新会话，也可以稍后发送 /use。", workspaceKey)
 	}
 	events = append(events, eventcontract.Event{
 		Kind:             eventcontract.KindNotice,

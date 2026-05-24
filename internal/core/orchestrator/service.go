@@ -33,6 +33,7 @@ type Service struct {
 	nextLocalRequestID        int
 	nextHeadlessID            int
 	nextAutoContinueEpisodeID int
+	personalDefaultInputs     map[string]control.Action
 	handoffUntil              map[string]time.Time
 	pausedUntil               map[string]time.Time
 	abandoningUntil           map[string]time.Time
@@ -202,19 +203,20 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 		planner = renderer.NewPlanner()
 	}
 	svc := &Service{
-		now:              now,
-		config:           cfg,
-		root:             state.NewRoot(),
-		renderer:         planner,
-		handoffUntil:     map[string]time.Time{},
-		pausedUntil:      map[string]time.Time{},
-		abandoningUntil:  map[string]time.Time{},
-		itemBuffers:      map[string]*itemBuffer{},
-		threadRefreshes:  map[string]bool{},
-		instanceClaims:   map[string]*instanceClaimRecord{},
-		workspaceClaims:  map[string]*workspaceClaimRecord{},
-		threadClaims:     map[string]*threadClaimRecord{},
-		surfaceUIRuntime: map[string]*surfaceUIRuntimeRecord{},
+		now:                   now,
+		config:                cfg,
+		root:                  state.NewRoot(),
+		renderer:              planner,
+		personalDefaultInputs: map[string]control.Action{},
+		handoffUntil:          map[string]time.Time{},
+		pausedUntil:           map[string]time.Time{},
+		abandoningUntil:       map[string]time.Time{},
+		itemBuffers:           map[string]*itemBuffer{},
+		threadRefreshes:       map[string]bool{},
+		instanceClaims:        map[string]*instanceClaimRecord{},
+		workspaceClaims:       map[string]*workspaceClaimRecord{},
+		threadClaims:          map[string]*threadClaimRecord{},
+		surfaceUIRuntime:      map[string]*surfaceUIRuntimeRecord{},
 	}
 	svc.turns = newServiceTurnRuntime(svc)
 	svc.pickers = newServicePickerRuntime(svc)
@@ -272,6 +274,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		switch action.Kind {
 		case control.ActionStatus:
 			return s.filterEventsForSurfaceVisibility([]eventcontract.Event{{Kind: eventcontract.KindSnapshot, SurfaceSessionID: surface.SurfaceSessionID, Snapshot: s.buildSnapshot(surface)}})
+		case control.ActionWhere:
+			return s.filterEventsForSurfaceVisibility(s.where(surface))
 		case control.ActionAutoWhipCommand:
 			return s.filterEventsForSurfaceVisibility(s.handleAutoWhipCommand(surface, action))
 		case control.ActionAutoContinueCommand:
@@ -444,6 +448,9 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 	case control.ActionStatus:
 		s.markCommandLauncherTerminal(surface)
 		events = []eventcontract.Event{{Kind: eventcontract.KindSnapshot, SurfaceSessionID: surface.SurfaceSessionID, Snapshot: s.buildSnapshot(surface)}}
+	case control.ActionWhere:
+		s.markCommandLauncherTerminal(surface)
+		events = s.where(surface)
 	case control.ActionDetach:
 		events = s.detach(surface)
 	default:

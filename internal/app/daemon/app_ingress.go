@@ -309,7 +309,7 @@ func (a *App) maybeReplayPendingRequestVisibilityAfterActionLocked(ctx context.C
 	if a == nil || a.service == nil {
 		return
 	}
-	if action.Kind == control.ActionStatus {
+	if action.Kind == control.ActionStatus || action.Kind == control.ActionWhere {
 		return
 	}
 	surfaceID := strings.TrimSpace(action.SurfaceSessionID)
