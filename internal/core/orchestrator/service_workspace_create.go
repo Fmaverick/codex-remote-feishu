@@ -119,6 +119,26 @@ func (s *Service) startFreshWorkspaceHeadless(surface *state.SurfaceConsoleRecor
 	return s.startFreshWorkspaceHeadlessWithOptions(surface, workspaceKey, false)
 }
 
+func (s *Service) AttachWorkspaceForSurface(surfaceID, workspaceKey string, prepareNewThread bool) []eventcontract.Event {
+	surface := s.Surface(strings.TrimSpace(surfaceID))
+	if surface == nil {
+		return nil
+	}
+	workspaceKey = normalizeWorkspaceClaimKey(workspaceKey)
+	if workspaceKey == "" {
+		return notice(surface, "workspace_create_invalid", "目录路径无效，请重新选择。")
+	}
+	if !s.surfaceIsHeadless(surface) {
+		return notice(surface, "workspace_create_normal_only", "当前处于 vscode 模式，不能从目录直接添加工作区。请先切到 headless 模式（`/mode codex` 或 `/mode claude`）。")
+	}
+	targetBackend := s.surfaceBackend(surface)
+	continuation := s.buildHeadlessWorkspaceContinuation(surface, workspaceKey, targetBackend, prepareNewThread)
+	resolution := s.resolveWorkspaceContract(surface, workspaceKey, targetBackend)
+	return s.filterEventsForSurfaceVisibility(s.executeResolvedWorkspaceContinuation(surface, continuation, resolution, attachWorkspaceOptions{
+		PrepareNewThread: prepareNewThread,
+	}))
+}
+
 func (s *Service) startFreshWorkspaceHeadlessWithOptions(surface *state.SurfaceConsoleRecord, workspaceKey string, prepareNewThread bool) []eventcontract.Event {
 	return s.startFreshWorkspaceHeadlessWithOverlayCleanup(surface, workspaceKey, prepareNewThread, surfaceOverlayRouteCleanupOptions{})
 }

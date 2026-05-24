@@ -212,6 +212,7 @@ func (a *App) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/desktop-session/status", a.requireAdmin(a.handleDesktopSessionStatus))
 	mux.HandleFunc("POST /api/admin/desktop-session/quit", a.requireAdmin(a.handleDesktopSessionQuit))
 	mux.HandleFunc("GET /api/admin/runtime-status", a.requireAdmin(a.handleRuntimeStatus))
+	mux.HandleFunc("POST /api/admin/surfaces/{surface}/workspace", a.requireAdmin(a.handleAdminSurfaceWorkspaceAttach))
 	mux.HandleFunc("GET /api/admin/config", a.requireAdmin(a.handleAdminConfig))
 	mux.HandleFunc("PUT /api/admin/config", a.requireAdmin(a.handleNotImplemented("PUT /api/admin/config")))
 	mux.HandleFunc("GET /api/admin/codex/providers", a.requireAdmin(a.handleCodexProvidersList))
