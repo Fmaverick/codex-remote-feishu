@@ -229,6 +229,8 @@ func decisionForRequestOption(optionID string) string {
 		return "decline"
 	case "cancel":
 		return "cancel"
+	case "revise":
+		return "revise"
 	default:
 		return ""
 	}
@@ -462,11 +464,14 @@ func buildApprovalRequestOptions(backend agentproto.Backend, semanticKind string
 			return
 		}
 		switch optionID {
-		case "accept", "acceptForSession", "decline", "cancel", "captureFeedback":
+		case "accept", "acceptForSession", "decline", "cancel", "captureFeedback", "revise":
 		default:
 			return
 		}
 		if optionID == "captureFeedback" && !approvalRequestSupportsFeedbackCapture(semanticKind) {
+			return
+		}
+		if optionID == "revise" && !approvalRequestSupportsSameRequestRevise(semanticKind) {
 			return
 		}
 		if label == "" {
@@ -480,6 +485,8 @@ func buildApprovalRequestOptions(backend agentproto.Backend, semanticKind string
 			case "cancel":
 				label = "取消"
 			case "captureFeedback":
+				label = requestFeedbackActionLabel(backend)
+			case "revise":
 				label = requestFeedbackActionLabel(backend)
 			default:
 				return
@@ -517,6 +524,9 @@ func buildApprovalRequestOptions(backend agentproto.Backend, semanticKind string
 	}
 	if approvalRequestSupportsFeedbackCapture(semanticKind) {
 		add("captureFeedback", requestFeedbackActionLabel(backend), "default")
+	}
+	if approvalRequestSupportsSameRequestRevise(semanticKind) {
+		add("revise", requestFeedbackActionLabel(backend), "default")
 	}
 	return options
 }
@@ -650,6 +660,15 @@ func approvalRequestSupportsFeedbackCapture(semanticKind string) bool {
 		return false
 	default:
 		return true
+	}
+}
+
+func approvalRequestSupportsSameRequestRevise(semanticKind string) bool {
+	switch control.NormalizeRequestSemanticKind(semanticKind, "approval") {
+	case control.RequestSemanticPlanConfirmation:
+		return true
+	default:
+		return false
 	}
 }
 

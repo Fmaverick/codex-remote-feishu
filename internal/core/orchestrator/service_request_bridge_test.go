@@ -19,11 +19,13 @@ func TestClaudeCanUseToolRequestUsesDedicatedBridgeContract(t *testing.T) {
 		WorkspaceRoot: "/data/dl/droid",
 		WorkspaceKey:  "/data/dl/droid",
 		ShortName:     "droid",
+		Backend:       agentproto.BackendClaude,
 		Online:        true,
 		Threads: map[string]*state.ThreadRecord{
 			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
 		},
 	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionModeCommand, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", Text: "/mode claude"})
 	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
 	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", ThreadID: "thread-1"})
 	svc.ApplyAgentEvent("inst-1", agentproto.Event{
@@ -84,11 +86,13 @@ func TestPlanConfirmationDeclineRequestsInterruptOnDecline(t *testing.T) {
 		WorkspaceRoot: "/data/dl/droid",
 		WorkspaceKey:  "/data/dl/droid",
 		ShortName:     "droid",
+		Backend:       agentproto.BackendClaude,
 		Online:        true,
 		Threads: map[string]*state.ThreadRecord{
 			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
 		},
 	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionModeCommand, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", Text: "/mode claude"})
 	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
 	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", ThreadID: "thread-1"})
 	svc.ApplyAgentEvent("inst-1", agentproto.Event{
@@ -120,14 +124,14 @@ func TestPlanConfirmationDeclineRequestsInterruptOnDecline(t *testing.T) {
 	if prompt.SemanticKind != control.RequestSemanticPlanConfirmation {
 		t.Fatalf("semantic kind = %q, want %q", prompt.SemanticKind, control.RequestSemanticPlanConfirmation)
 	}
-	if len(prompt.Options) != 2 || prompt.Options[0].OptionID != "accept" || prompt.Options[1].OptionID != "decline" {
+	if len(prompt.Options) != 3 || prompt.Options[0].OptionID != "accept" || prompt.Options[1].OptionID != "decline" || prompt.Options[2].OptionID != "revise" {
 		t.Fatalf("expected plan confirmation prompt to expose only accept/decline, got %#v", prompt.Options)
 	}
 	if !strings.Contains(prompt.HintText, "停止当前 turn") {
 		t.Fatalf("hint text = %q, want interrupt guidance", prompt.HintText)
 	}
-	if strings.Contains(prompt.HintText, "点击") || strings.Contains(prompt.HintText, "怎么改") {
-		t.Fatalf("hint text = %q, want no revise guidance", prompt.HintText)
+	if !strings.Contains(prompt.HintText, "告诉 Claude 怎么改") {
+		t.Fatalf("hint text = %q, want revise guidance", prompt.HintText)
 	}
 
 	events := svc.ApplySurfaceAction(control.Action{
@@ -145,7 +149,7 @@ func TestPlanConfirmationDeclineRequestsInterruptOnDecline(t *testing.T) {
 	}
 }
 
-func TestPlanConfirmationCaptureFeedbackIsRejected(t *testing.T) {
+func TestPlanConfirmationReviseUsesSameRequestFeedback(t *testing.T) {
 	now := time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -184,17 +188,46 @@ func TestPlanConfirmationCaptureFeedbackIsRejected(t *testing.T) {
 		},
 	})
 
-	events := svc.ApplySurfaceAction(control.Action{
+	startCapture := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		MessageID:        "om-card-2",
-		Request:          testRequestAction("req-plan-1", "approval", "captureFeedback", nil, 0),
+		Request:          testRequestAction("req-plan-1", "approval", "revise", nil, 0),
 	})
-	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_invalid" {
-		t.Fatalf("expected request_invalid notice, got %#v", events)
+	if len(startCapture) != 1 || startCapture[0].Notice == nil || startCapture[0].Notice.Code != "request_capture_started" {
+		t.Fatalf("expected request_capture_started notice, got %#v", startCapture)
 	}
-	if svc.root.Surfaces["surface-1"].ActiveRequestCapture != nil {
-		t.Fatalf("expected plan confirmation to reject capture mode, got %#v", svc.root.Surfaces["surface-1"].ActiveRequestCapture)
+	if svc.root.Surfaces["surface-1"].ActiveRequestCapture == nil {
+		t.Fatalf("expected plan confirmation revise to enter capture mode")
+	}
+
+	feedback := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-msg-3",
+		Text:             "先补一条回滚方案，再继续。",
+	})
+	if len(feedback) != 2 || feedback[1].Command == nil {
+		t.Fatalf("expected inline replacement plus request response command, got %#v", feedback)
+	}
+	req := feedback[1].Command.Request
+	if req.Response["decision"] != "revise" {
+		t.Fatalf("expected revise decision, got %#v", req)
+	}
+	if req.Response["message"] != "先补一条回滚方案，再继续。" {
+		t.Fatalf("expected revise feedback to stay on request response, got %#v", req.Response)
+	}
+	if req.InterruptOnDecline {
+		t.Fatalf("expected revise to avoid interrupt, got %#v", req)
+	}
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.ActiveRequestCapture != nil {
+		t.Fatalf("expected revise capture to be cleared, got %#v", surface.ActiveRequestCapture)
+	}
+	if len(surface.QueuedQueueItemIDs) != 0 {
+		t.Fatalf("expected no queued follow-up item for same-request revise, got %#v", surface.QueuedQueueItemIDs)
 	}
 }
 

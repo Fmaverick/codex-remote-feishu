@@ -10,6 +10,7 @@ func TestNormalizeRequestOptionID(t *testing.T) {
 		{input: "accept", want: "accept"},
 		{input: "allow-this-session", want: "acceptForSession"},
 		{input: " reject ", want: "decline"},
+		{input: "Tell Claude What To Do Differently", want: "revise"},
 		{input: "Tell Codex What To Do Differently", want: "captureFeedback"},
 		{input: "custom-option", want: "custom-option"},
 	}

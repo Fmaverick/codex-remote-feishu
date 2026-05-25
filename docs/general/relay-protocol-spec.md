@@ -331,6 +331,7 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - `accept`
 - `acceptForSession`
 - `decline`
+- `revise`
 
 兼容规则：
 
@@ -345,6 +346,10 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - 它会在 server 层翻译成：
   - 对当前 request 发送 `decision=decline`
   - 再把用户下一条文字作为 follow-up prompt 入队
+- `revise` 当前只用于 `plan_confirmation`
+  - server 会把它翻译成同一次 request 内的 deny-with-guidance
+  - 不会额外触发 interrupt
+  - 也不会把用户文本再排成普通 follow-up queue item
 
 ### 4.6 `threads.refresh`
 
@@ -601,8 +606,9 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 当前 server 只在产品层对 approval request 做额外补全：
 
 - 若 upstream 未显式给出 option，但请求种类可确认支持 session 级放行，则补出 `acceptForSession`
+- `plan_confirmation` 额外补出 `revise`
 - `captureFeedback` 只存在于 Feishu `request.prompt` 渲染层，不回写到 canonical event
-  - 当前 `plan_confirmation` 已显式排除这条入口，只保留 accept / decline 安全子集
+  - 当前 `plan_confirmation` 已显式排除这条入口，改为显式暴露 `revise`
 
 ### 5.7 Helper/Internal traffic 规则
 
@@ -691,9 +697,10 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 
 - upstream 原生透传的 approval option
 - server 合成的 `acceptForSession`
+- server 合成的 `revise`
 - Feishu 专用的 `captureFeedback`
 
-其中当前 `plan_confirmation` 已收窄到只渲染 accept / decline，不再追加 `captureFeedback`。
+其中当前 `plan_confirmation` 会渲染 accept / decline / revise；`revise` 会进入 request-capture，再把下一条文本作为 same-request deny-with-guidance 回写给 Claude，而不是复用 `captureFeedback` 的“拒绝 + follow-up 入队”语义。
 
 `pending.input.state` 当前除 queue/typing/discard 外，还会投影：
 

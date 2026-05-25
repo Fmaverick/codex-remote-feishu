@@ -14,6 +14,8 @@ func NormalizeRequestOptionID(value string) string {
 		return "acceptForSession"
 	case "decline", "deny", "reject", "no":
 		return "decline"
+	case "revise", "suggestalternative", "tellclaudewhattodo", "tellclaudewhattododifferently":
+		return "revise"
 	case "capturefeedback", "feedback", "tellcodexwhattodo", "tellcodexwhattododifferently":
 		return "captureFeedback"
 	default:

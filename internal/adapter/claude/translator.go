@@ -373,7 +373,7 @@ func resolveRequestDecision(response map[string]any) string {
 		return ""
 	}
 	switch strings.TrimSpace(lookupStringFromAny(response["decision"])) {
-	case "accept", "acceptForSession", "decline", "cancel":
+	case "accept", "acceptForSession", "decline", "cancel", "revise":
 		return strings.TrimSpace(lookupStringFromAny(response["decision"]))
 	default:
 		return ""

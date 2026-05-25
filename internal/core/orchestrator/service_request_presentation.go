@@ -271,10 +271,13 @@ func requestPromptTitle(current, fallback string, genericTitles ...string) strin
 
 func approvalRequestHintText(backend agentproto.Backend, semanticKind string, options []state.RequestPromptOptionRecord) string {
 	captureFeedback := false
+	sameRequestRevise := false
 	for _, option := range options {
-		if control.NormalizeRequestOptionID(option.OptionID) == "captureFeedback" {
+		switch control.NormalizeRequestOptionID(option.OptionID) {
+		case "captureFeedback":
 			captureFeedback = true
-			break
+		case "revise":
+			sameRequestRevise = true
 		}
 	}
 	switch semanticKind {
@@ -299,6 +302,9 @@ func approvalRequestHintText(backend agentproto.Backend, semanticKind string, op
 		}
 		return "允许后会继续当前工具调用；拒绝只会拒绝这次工具调用。"
 	case control.RequestSemanticPlanConfirmation:
+		if sameRequestRevise {
+			return "批准会继续执行当前计划；拒绝会停止当前 turn；如需修改计划，请点击“" + requestFeedbackActionLabel(backend) + "”后再发送下一条文字。"
+		}
 		return "批准会继续执行当前计划；拒绝会停止当前 turn。"
 	default:
 		if captureFeedback {
