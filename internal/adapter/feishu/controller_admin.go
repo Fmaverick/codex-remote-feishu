@@ -16,6 +16,7 @@ func (c *MultiGatewayController) UpsertApp(ctx context.Context, cfg GatewayAppCo
 		c.workers[cfg.GatewayID] = worker
 	}
 	c.stopWorkerLocked(worker)
+	worker.recoveryAttempt = 0
 	worker.config = cfg
 	worker.status = GatewayStatus{
 		GatewayID:      cfg.GatewayID,

@@ -260,11 +260,18 @@ func (c *MultiGatewayController) applyStateHook(gatewayID string, generation uin
 	if state == GatewayStateConnected {
 		worker.status.LastConnectedAt = time.Now().UTC()
 		worker.status.LastError = ""
+		worker.recoveryAttempt = 0
+		worker.recoveryGeneration = 0
+		if worker.recoveryTimer != nil {
+			worker.recoveryTimer.Stop()
+			worker.recoveryTimer = nil
+		}
 		return
 	}
 	if err != nil {
 		worker.status.LastError = err.Error()
 	}
+	c.maybeScheduleGatewayRecoveryLocked(gatewayID, worker, generation, state, err)
 }
 
 func (c *MultiGatewayController) updateWorkerError(gatewayID string, err error) {
@@ -278,6 +285,7 @@ func (c *MultiGatewayController) updateWorkerError(gatewayID string, err error) 
 	if worker.status.State == GatewayStateConnected {
 		worker.status.State = GatewayStateDegraded
 	}
+	c.maybeScheduleGatewayRecoveryLocked(gatewayID, worker, worker.generation, worker.status.State, err)
 }
 
 func (c *MultiGatewayController) stopAllWorkers() {
@@ -292,6 +300,11 @@ func (c *MultiGatewayController) stopWorkerLocked(worker *gatewayWorker) {
 	if worker == nil {
 		return
 	}
+	if worker.recoveryTimer != nil {
+		worker.recoveryTimer.Stop()
+		worker.recoveryTimer = nil
+	}
+	worker.recoveryGeneration = 0
 	if worker.cancel != nil {
 		worker.cancel()
 		worker.cancel = nil

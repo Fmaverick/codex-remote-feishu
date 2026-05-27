@@ -2,8 +2,10 @@ package feishu
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -451,23 +453,323 @@ func TestMultiGatewayControllerStatusShowsDisabledApps(t *testing.T) {
 	}
 }
 
+func TestMultiGatewayControllerAutoReconnectsTicketInvalidFailure(t *testing.T) {
+	restore := useGatewayRecoveryBackoffForTest(t, 10*time.Millisecond)
+	defer restore()
+
+	controller := NewMultiGatewayController()
+	var (
+		mu      sync.Mutex
+		created []*fakeGatewayRuntime
+	)
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		runtime := newFakeGatewayRuntime(cfg.GatewayID)
+		mu.Lock()
+		created = append(created, runtime)
+		index := len(created)
+		mu.Unlock()
+		if index == 1 {
+			runtime.startErr = &gatewayRunnerError{
+				code: "auth_failed",
+				err:  errors.New("handshake failed: code=514 msg=ticket is invalid"),
+			}
+		}
+		return runtime
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := controller.UpsertApp(ctx, GatewayAppConfig{
+		GatewayID: "app-1",
+		AppID:     "cli_app-1",
+		AppSecret: "secret_app-1",
+		Enabled:   true,
+	}); err != nil {
+		t.Fatalf("UpsertApp: %v", err)
+	}
+	go func() {
+		_ = controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
+	}()
+
+	first := waitForCreatedRuntime(t, &mu, &created, 0)
+	waitFakeGatewayStarted(t, first)
+	second := waitForCreatedRuntime(t, &mu, &created, 1)
+	waitFakeGatewayStarted(t, second)
+
+	status := onlyGatewayStatus(t, controller)
+	if status.State != GatewayStateConnected || status.LastError != "" {
+		t.Fatalf("expected recovered connected status, got %#v", status)
+	}
+}
+
+func TestMultiGatewayControllerDoesNotAutoReconnectCredentialAuthFailure(t *testing.T) {
+	restore := useGatewayRecoveryBackoffForTest(t, 10*time.Millisecond)
+	defer restore()
+
+	controller := NewMultiGatewayController()
+	var (
+		mu      sync.Mutex
+		created []*fakeGatewayRuntime
+	)
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		runtime := newFakeGatewayRuntime(cfg.GatewayID)
+		runtime.startErr = &gatewayRunnerError{
+			code: "auth_failed",
+			err:  errors.New("endpoint auth failed: code=999 msg=bad secret"),
+		}
+		mu.Lock()
+		created = append(created, runtime)
+		mu.Unlock()
+		return runtime
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := controller.UpsertApp(ctx, GatewayAppConfig{
+		GatewayID: "app-1",
+		AppID:     "cli_app-1",
+		AppSecret: "bad_secret",
+		Enabled:   true,
+	}); err != nil {
+		t.Fatalf("UpsertApp: %v", err)
+	}
+	go func() {
+		_ = controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
+	}()
+
+	first := waitForCreatedRuntime(t, &mu, &created, 0)
+	waitFakeGatewayStarted(t, first)
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	count := len(created)
+	mu.Unlock()
+	if count != 1 {
+		t.Fatalf("expected no reconnect for credential auth failure, created=%d", count)
+	}
+	status := onlyGatewayStatus(t, controller)
+	if status.State != GatewayStateDegraded || !strings.Contains(status.LastError, "bad secret") {
+		t.Fatalf("expected degraded bad secret status, got %#v", status)
+	}
+}
+
+func TestMultiGatewayControllerAutoReconnectsUnexpectedStoppedRuntime(t *testing.T) {
+	restore := useGatewayRecoveryBackoffForTest(t, 10*time.Millisecond)
+	defer restore()
+
+	controller := NewMultiGatewayController()
+	var (
+		mu      sync.Mutex
+		created []*fakeGatewayRuntime
+	)
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		runtime := newFakeGatewayRuntime(cfg.GatewayID)
+		mu.Lock()
+		created = append(created, runtime)
+		index := len(created)
+		mu.Unlock()
+		if index == 1 {
+			runtime.returnImmediately = true
+		}
+		return runtime
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := controller.UpsertApp(ctx, GatewayAppConfig{
+		GatewayID: "app-1",
+		AppID:     "cli_app-1",
+		AppSecret: "secret_app-1",
+		Enabled:   true,
+	}); err != nil {
+		t.Fatalf("UpsertApp: %v", err)
+	}
+	go func() {
+		_ = controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
+	}()
+
+	first := waitForCreatedRuntime(t, &mu, &created, 0)
+	waitFakeGatewayStarted(t, first)
+	second := waitForCreatedRuntime(t, &mu, &created, 1)
+	waitFakeGatewayStarted(t, second)
+}
+
+func TestMultiGatewayControllerAutoReconnectsInvalidAccessTokenApplyFailure(t *testing.T) {
+	restore := useGatewayRecoveryBackoffForTest(t, 10*time.Millisecond)
+	defer restore()
+
+	controller := NewMultiGatewayController()
+	var (
+		mu      sync.Mutex
+		created []*fakeGatewayRuntime
+	)
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		runtime := newFakeGatewayRuntime(cfg.GatewayID)
+		mu.Lock()
+		created = append(created, runtime)
+		index := len(created)
+		mu.Unlock()
+		if index == 1 {
+			runtime.applyFn = func(context.Context, []Operation) error {
+				return errors.New("feishu api im.v1.message.create failed: code=99991663 msg=Invalid access token for authorization. Please make a request with token attached.")
+			}
+		}
+		return runtime
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := controller.UpsertApp(ctx, GatewayAppConfig{
+		GatewayID: "app-1",
+		AppID:     "cli_app-1",
+		AppSecret: "secret_app-1",
+		Enabled:   true,
+	}); err != nil {
+		t.Fatalf("UpsertApp: %v", err)
+	}
+	go func() {
+		_ = controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
+	}()
+
+	first := waitForCreatedRuntime(t, &mu, &created, 0)
+	waitFakeGatewayStarted(t, first)
+	err := controller.Apply(context.Background(), []Operation{{GatewayID: "app-1", Kind: OperationSendText, Text: "hello"}})
+	if err == nil {
+		t.Fatal("expected invalid access token apply error")
+	}
+	second := waitForCreatedRuntime(t, &mu, &created, 1)
+	waitFakeGatewayStarted(t, second)
+	status := onlyGatewayStatus(t, controller)
+	if status.State != GatewayStateConnected || status.LastError != "" {
+		t.Fatalf("expected recovered connected status, got %#v", status)
+	}
+}
+
+func TestMultiGatewayControllerAutoReconnectDoesNotDuplicateSameGeneration(t *testing.T) {
+	restore := useGatewayRecoveryBackoffForTest(t, 25*time.Millisecond)
+	defer restore()
+
+	controller := NewMultiGatewayController()
+	var (
+		mu      sync.Mutex
+		created []*fakeGatewayRuntime
+	)
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		runtime := newFakeGatewayRuntime(cfg.GatewayID)
+		mu.Lock()
+		created = append(created, runtime)
+		index := len(created)
+		mu.Unlock()
+		if index == 1 {
+			runtime.blockOnError = true
+		}
+		return runtime
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := controller.UpsertApp(ctx, GatewayAppConfig{
+		GatewayID: "app-1",
+		AppID:     "cli_app-1",
+		AppSecret: "secret_app-1",
+		Enabled:   true,
+	}); err != nil {
+		t.Fatalf("UpsertApp: %v", err)
+	}
+	go func() {
+		_ = controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
+	}()
+
+	first := waitForCreatedRuntime(t, &mu, &created, 0)
+	waitFakeGatewayStarted(t, first)
+	recoverable := &gatewayRunnerError{code: "connect_failed", err: errors.New("read tcp: connection reset")}
+	first.emitState(GatewayStateDegraded, recoverable)
+	first.emitState(GatewayStateDegraded, recoverable)
+
+	second := waitForCreatedRuntime(t, &mu, &created, 1)
+	waitFakeGatewayStarted(t, second)
+	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
+	count := len(created)
+	mu.Unlock()
+	if count != 2 {
+		t.Fatalf("expected one scheduled reconnect for generation, created=%d", count)
+	}
+}
+
+func TestMultiGatewayControllerManualUpsertInvalidatesScheduledReconnect(t *testing.T) {
+	restore := useGatewayRecoveryBackoffForTest(t, 50*time.Millisecond)
+	defer restore()
+
+	controller := NewMultiGatewayController()
+	var (
+		mu      sync.Mutex
+		created []*fakeGatewayRuntime
+	)
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		runtime := newFakeGatewayRuntime(cfg.GatewayID)
+		mu.Lock()
+		created = append(created, runtime)
+		mu.Unlock()
+		return runtime
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := controller.UpsertApp(ctx, GatewayAppConfig{
+		GatewayID: "app-1",
+		AppID:     "cli_old",
+		AppSecret: "secret_old",
+		Enabled:   true,
+	}); err != nil {
+		t.Fatalf("UpsertApp: %v", err)
+	}
+	go func() {
+		_ = controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
+	}()
+
+	first := waitForCreatedRuntime(t, &mu, &created, 0)
+	waitFakeGatewayStarted(t, first)
+	first.emitState(GatewayStateDegraded, &gatewayRunnerError{code: "connect_failed", err: errors.New("read tcp: connection reset")})
+	if err := controller.UpsertApp(ctx, GatewayAppConfig{
+		GatewayID: "app-1",
+		AppID:     "cli_new",
+		AppSecret: "secret_new",
+		Enabled:   true,
+	}); err != nil {
+		t.Fatalf("manual UpsertApp: %v", err)
+	}
+	second := waitForCreatedRuntime(t, &mu, &created, 1)
+	waitFakeGatewayStarted(t, second)
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	count := len(created)
+	mu.Unlock()
+	if count != 2 {
+		t.Fatalf("expected stale scheduled reconnect to be invalidated, created=%d", count)
+	}
+}
+
 type fakeGatewayRuntime struct {
 	gatewayID string
 	startedCh chan struct{}
 	stoppedCh chan struct{}
 
-	mu               sync.Mutex
-	stateHook        func(GatewayState, error)
-	applyCalls       [][]Operation
-	applyFn          func(context.Context, []Operation) error
-	sendIMFileCalls  []IMFileSendRequest
-	sendIMFileFn     func(context.Context, IMFileSendRequest) (IMFileSendResult, error)
-	sendIMImageCalls []IMImageSendRequest
-	sendIMImageFn    func(context.Context, IMImageSendRequest) (IMImageSendResult, error)
-	sendIMVideoCalls []IMVideoSendRequest
-	sendIMVideoFn    func(context.Context, IMVideoSendRequest) (IMVideoSendResult, error)
-	readCommentCalls []DriveFileCommentReadRequest
-	readCommentFn    func(context.Context, DriveFileCommentReadRequest) (DriveFileCommentReadResult, error)
+	mu                sync.Mutex
+	stateHook         func(GatewayState, error)
+	startErr          error
+	returnImmediately bool
+	blockOnError      bool
+	applyCalls        [][]Operation
+	applyFn           func(context.Context, []Operation) error
+	sendIMFileCalls   []IMFileSendRequest
+	sendIMFileFn      func(context.Context, IMFileSendRequest) (IMFileSendResult, error)
+	sendIMImageCalls  []IMImageSendRequest
+	sendIMImageFn     func(context.Context, IMImageSendRequest) (IMImageSendResult, error)
+	sendIMVideoCalls  []IMVideoSendRequest
+	sendIMVideoFn     func(context.Context, IMVideoSendRequest) (IMVideoSendResult, error)
+	readCommentCalls  []DriveFileCommentReadRequest
+	readCommentFn     func(context.Context, DriveFileCommentReadRequest) (DriveFileCommentReadResult, error)
 }
 
 func newFakeGatewayRuntime(gatewayID string) *fakeGatewayRuntime {
@@ -483,6 +785,23 @@ func (f *fakeGatewayRuntime) Start(ctx context.Context, _ ActionHandler) error {
 	select {
 	case f.startedCh <- struct{}{}:
 	default:
+	}
+	if f.startErr != nil {
+		if f.blockOnError {
+			<-ctx.Done()
+		}
+		select {
+		case f.stoppedCh <- struct{}{}:
+		default:
+		}
+		return f.startErr
+	}
+	if f.returnImmediately {
+		select {
+		case f.stoppedCh <- struct{}{}:
+		default:
+		}
+		return nil
 	}
 	<-ctx.Done()
 	select {
@@ -687,4 +1006,22 @@ func waitForCreatedRuntime(t *testing.T, mu *sync.Mutex, created *[]*fakeGateway
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
+}
+
+func useGatewayRecoveryBackoffForTest(t *testing.T, delay time.Duration) func() {
+	t.Helper()
+	previous := gatewayRecoveryBackoff
+	gatewayRecoveryBackoff = []time.Duration{delay}
+	return func() {
+		gatewayRecoveryBackoff = previous
+	}
+}
+
+func onlyGatewayStatus(t *testing.T, controller *MultiGatewayController) GatewayStatus {
+	t.Helper()
+	statuses := controller.Status()
+	if len(statuses) != 1 {
+		t.Fatalf("expected exactly one gateway status, got %#v", statuses)
+	}
+	return statuses[0]
 }

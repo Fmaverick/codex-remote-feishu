@@ -63,12 +63,15 @@ type gatewayRuntime interface {
 }
 
 type gatewayWorker struct {
-	config     GatewayAppConfig
-	status     GatewayStatus
-	runtime    gatewayRuntime
-	previewer  gatewayPreviewRuntime
-	cancel     context.CancelFunc
-	generation uint64
+	config             GatewayAppConfig
+	status             GatewayStatus
+	runtime            gatewayRuntime
+	previewer          gatewayPreviewRuntime
+	cancel             context.CancelFunc
+	generation         uint64
+	recoveryAttempt    int
+	recoveryGeneration uint64
+	recoveryTimer      *time.Timer
 }
 
 type MultiGatewayController struct {

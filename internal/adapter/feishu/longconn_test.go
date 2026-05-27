@@ -3,6 +3,7 @@ package feishu
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -97,6 +98,33 @@ func TestLiveGatewayStartStopsOnContextCancel(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for gateway to stop after cancel")
+	}
+}
+
+func TestGatewayErrorRecoverableClassifiesTicketInvalid(t *testing.T) {
+	err := &gatewayRunnerError{
+		code: "auth_failed",
+		err:  errors.New("handshake failed: code=514 msg=ticket is invalid"),
+	}
+	if !gatewayErrorRecoverable(err) {
+		t.Fatal("expected ticket invalid auth failure to be recoverable")
+	}
+}
+
+func TestGatewayErrorRecoverableSkipsCredentialAuthFailure(t *testing.T) {
+	err := &gatewayRunnerError{
+		code: "auth_failed",
+		err:  errors.New("endpoint auth failed: code=999 msg=bad secret"),
+	}
+	if gatewayErrorRecoverable(err) {
+		t.Fatal("expected credential auth failure to be non-recoverable")
+	}
+}
+
+func TestGatewayErrorRecoverableClassifiesInvalidAccessToken(t *testing.T) {
+	err := errors.New("feishu api im.v1.message.create failed: code=99991663 msg=Invalid access token for authorization. Please make a request with token attached.")
+	if !gatewayErrorRecoverable(err) {
+		t.Fatal("expected invalid access token API failure to be recoverable")
 	}
 }
 
