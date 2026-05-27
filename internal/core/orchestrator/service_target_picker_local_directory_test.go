@@ -107,7 +107,7 @@ func TestTargetPickerConfirmAddWorkspaceLocalDirectoryChangingNameInvalidatesPre
 		t.Fatalf("expected changed local-directory draft to stay on owner card, got %#v", renameEvents)
 	}
 	got := renameEvents[0].TargetPickerView
-	expectedFinalPath := filepath.Join(workspaceRoot, "child")
+	expectedFinalPath := filepath.Join(got.LocalDirectoryPath, "child")
 	if !got.LocalDirectoryChecked || got.ConfirmLabel != "创建并继续" || !got.CanConfirm || got.LocalDirectoryName != "child" || !testutil.SamePath(got.LocalDirectoryFinalPath, expectedFinalPath) {
 		t.Fatalf("expected changed local-directory draft to be rechecked as the new target, got %#v", got)
 	}

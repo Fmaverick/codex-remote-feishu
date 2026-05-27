@@ -253,6 +253,15 @@ func TestClaudeTranslatorPlanConfirmationNarrowScopeAvoidsAcceptEditsAndExplains
 	}
 }
 
+func TestPlanPermissionPathIsAbsoluteTreatsLeadingSlashAsAbsolute(t *testing.T) {
+	if !planPermissionPathIsAbsolute("/data/dl/shared-specs") {
+		t.Fatalf("expected leading-slash path to stay absolute across host platforms")
+	}
+	if planPermissionPathIsAbsolute("internal/adapter/claude") {
+		t.Fatalf("expected relative path to stay non-absolute")
+	}
+}
+
 func permissionUpdateByType(t *testing.T, updates []map[string]any, want string) map[string]any {
 	t.Helper()
 	for _, update := range updates {

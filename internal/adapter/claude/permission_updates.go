@@ -304,7 +304,7 @@ func planPermissionAdditionalDirectories(directories []string, cwd string) []str
 		if cwd != "" && (samePlanPermissionPath(dir, cwd) || planPermissionPathWithin(dir, cwd)) {
 			continue
 		}
-		if !filepath.IsAbs(filepath.FromSlash(dir)) && cwd != "" {
+		if !planPermissionPathIsAbsolute(dir) && cwd != "" {
 			continue
 		}
 		out = append(out, dir)
@@ -341,6 +341,17 @@ func normalizedPlanPermissionPath(value string) string {
 		return ""
 	}
 	return filepath.ToSlash(filepath.Clean(filepath.FromSlash(value)))
+}
+
+func planPermissionPathIsAbsolute(value string) bool {
+	value = normalizedPlanPermissionPath(value)
+	if value == "" {
+		return false
+	}
+	if strings.HasPrefix(value, "/") {
+		return true
+	}
+	return filepath.IsAbs(filepath.FromSlash(value))
 }
 
 func samePlanPermissionPath(a, b string) bool {
