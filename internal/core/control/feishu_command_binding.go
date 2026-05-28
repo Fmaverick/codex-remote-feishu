@@ -86,6 +86,9 @@ func buildFeishuCommandBindings() map[string]FeishuCommandBinding {
 	for _, familyID := range []string{
 		FeishuCommandCompact,
 		FeishuCommandSteerAll,
+		FeishuCommandProject,
+		FeishuCommandNow,
+		FeishuCommandContinue,
 		FeishuCommandReview,
 		FeishuCommandPatch,
 	} {
@@ -198,7 +201,7 @@ func ownerEntryBindingWithPolicy(familyID string) FeishuCommandBinding {
 
 func followupPolicyForFamilyID(familyID string) (FeishuFollowupPolicy, bool) {
 	switch strings.TrimSpace(familyID) {
-	case FeishuCommandHelp, FeishuCommandStatus, FeishuCommandWhere, FeishuCommandStop, FeishuCommandNew, FeishuCommandFollow, FeishuCommandWorkspaceDetach, FeishuCommandDetach:
+	case FeishuCommandHelp, FeishuCommandStatus, FeishuCommandWhere, FeishuCommandProject, FeishuCommandNow, FeishuCommandContinue, FeishuCommandStop, FeishuCommandNew, FeishuCommandFollow, FeishuCommandWorkspaceDetach, FeishuCommandDetach:
 		return FeishuFollowupPolicy{
 			DropClasses: []FeishuFollowupHandoffClass{
 				FeishuFollowupHandoffClassNotice,

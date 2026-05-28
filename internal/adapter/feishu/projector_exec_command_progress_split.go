@@ -111,8 +111,8 @@ func execProgressRenderedContent(lines []execProgressRenderedLine) []string {
 	return out
 }
 
-func execProgressRenderedElements(lines []execProgressRenderedLine) []map[string]any {
-	return execCommandProgressElements(execProgressRenderedContent(lines))
+func execProgressRenderedElements(lines []execProgressRenderedLine, daemonLifecycleID string) []map[string]any {
+	return execCommandProgressElementsWithControls(execProgressRenderedContent(lines), daemonLifecycleID)
 }
 
 func execProgressCardFits(lines []execProgressRenderedLine, subtitle string) bool {
@@ -125,10 +125,10 @@ func execProgressCardFits(lines []execProgressRenderedLine, subtitle string) boo
 		CardSubtitle:    subtitle,
 		CardSubtitleTag: cardTextTagLarkMarkdown,
 		CardThemeKey:    cardThemeProgress,
-		CardElements:    execProgressRenderedElements(lines),
+		CardElements:    execProgressRenderedElements(lines, ""),
 		CardUpdateMulti: true,
 		cardEnvelope:    cardEnvelopeV2,
-		card:            rawCardDocumentWithHeader("工作中", cardTextTagPlainText, subtitle, cardTextTagLarkMarkdown, "", cardThemeProgress, execProgressRenderedElements(lines)),
+		card:            rawCardDocumentWithHeader("工作中", cardTextTagPlainText, subtitle, cardTextTagLarkMarkdown, "", cardThemeProgress, execProgressRenderedElements(lines, "")),
 	}
 	payload := renderOperationCard(op, op.effectiveCardEnvelope())
 	return feishuInteractiveMessageTransportFits(payload)

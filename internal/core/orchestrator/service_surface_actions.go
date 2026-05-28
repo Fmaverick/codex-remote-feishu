@@ -194,6 +194,11 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 	if text == "" && len(action.Inputs) == 0 {
 		return nil
 	}
+	s.appendProjectActivity(surface, control.ProjectActivityEntry{
+		Kind:  control.ProjectActivityUserMessage,
+		Label: "你说",
+		Text:  normalizeSourceMessagePreview(text),
+	})
 
 	if surface.ActiveRequestCapture != nil {
 		if text == "" {
@@ -285,6 +290,11 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 			return notice(surface, "new_thread_cwd_missing", "当前无法获取新会话的工作目录，请先重新 /use 一个有工作目录的会话。")
 		}
 		return notice(surface, "thread_not_ready", s.threadNotReadyText(surface))
+	}
+	if !detour.Triggered {
+		if interjectEvents, handled := s.consumePendingProjectInterject(surface, sanitizedAction, inputs, stagedMessageIDs, threadID, cwd, routeMode); handled {
+			return append(s.maybeSealPlanProposalForInput(surface), interjectEvents...)
+		}
 	}
 	events := s.maybeSealPlanProposalForInput(surface)
 	if detour.Triggered {

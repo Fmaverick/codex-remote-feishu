@@ -11,6 +11,7 @@ const (
 	KindPathPicker          Kind = "path.picker"
 	KindTargetPicker        Kind = "target.picker"
 	KindThreadHistory       Kind = "thread.history"
+	KindProjectCockpit      Kind = "project.cockpit"
 	KindPendingInput        Kind = "pending.input.state"
 	KindNotice              Kind = "notice"
 	KindPlanUpdate          Kind = "plan.updated"
@@ -30,6 +31,7 @@ var allKinds = []Kind{
 	KindPathPicker,
 	KindTargetPicker,
 	KindThreadHistory,
+	KindProjectCockpit,
 	KindPendingInput,
 	KindNotice,
 	KindPlanUpdate,

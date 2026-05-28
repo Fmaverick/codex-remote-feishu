@@ -111,10 +111,9 @@ func FeishuCommandMenuPageView() FeishuPageView {
 
 func FeishuRecommendedMenus() []FeishuRecommendedMenu {
 	order := []string{
+		FeishuCommandProject,
 		FeishuCommandMenu,
 		FeishuCommandStop,
-		FeishuCommandSteerAll,
-		FeishuCommandNew,
 		FeishuCommandReasoning,
 		FeishuCommandModel,
 		FeishuCommandAccess,
@@ -147,7 +146,7 @@ func catalogButtonLabel(def FeishuCommandDefinition) string {
 func feishuCommandDisplayRank(groupID, commandID string) int {
 	switch strings.TrimSpace(groupID) {
 	case FeishuCommandGroupCurrentWork:
-		return commandRank(commandID, FeishuCommandStop, FeishuCommandCompact, FeishuCommandSteerAll, FeishuCommandNew, FeishuCommandStatus, FeishuCommandWhere)
+		return commandRank(commandID, FeishuCommandProject, FeishuCommandContinue, FeishuCommandStop, FeishuCommandCompact, FeishuCommandSteerAll, FeishuCommandNew, FeishuCommandStatus, FeishuCommandWhere)
 	case FeishuCommandGroupSendSettings:
 		return commandRank(commandID, FeishuCommandMode, FeishuCommandReasoning, FeishuCommandModel, FeishuCommandAccess, FeishuCommandPlan, FeishuCommandVerbose, FeishuCommandAutoContinue)
 	case FeishuCommandGroupSwitchTarget:

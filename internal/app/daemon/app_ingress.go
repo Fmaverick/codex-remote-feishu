@@ -636,6 +636,7 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 			uiEvents = append(uiEvents, a.maybeRecoverHeadlessSurfacesLocked(now)...)
 		}
 		a.recordManagedHeadlessResumeOutcomeEventsLocked(uiEvents, now)
+		uiEvents = append(uiEvents, a.projectCockpitRefreshEventsLocked(instanceID, event, uiEvents)...)
 		a.handleUIEventsLocked(ctx, uiEvents)
 		if eventAffectsSurfaceResumeState(event) {
 			syncSurfaceResumeState = true

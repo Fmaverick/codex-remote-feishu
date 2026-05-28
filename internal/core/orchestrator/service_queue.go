@@ -153,6 +153,17 @@ func (s *Service) enqueuePreparedQueueItem(surface *state.SurfaceConsoleRecord, 
 	} else {
 		surface.QueuedQueueItemIDs = append(surface.QueuedQueueItemIDs, item.ID)
 	}
+	label := "排队"
+	if front {
+		label = "下一轮优先"
+	}
+	s.appendProjectActivity(surface, control.ProjectActivityEntry{
+		Kind:        control.ProjectActivityQueue,
+		Label:       label,
+		Text:        firstNonEmpty(item.SourceMessagePreview, item.ReplyToMessagePreview),
+		ThreadID:    queuedItemExecutionThreadID(item),
+		QueueItemID: item.ID,
+	})
 	position := len(surface.QueuedQueueItemIDs)
 	if front {
 		position = 1
@@ -364,6 +375,14 @@ func (s *Service) markRemoteTurnRunning(instanceID string, event agentproto.Even
 		binding.StartedAt = s.now().UTC()
 	}
 	item.Status = state.QueueItemRunning
+	s.appendProjectActivity(surface, control.ProjectActivityEntry{
+		Kind:        control.ProjectActivityTurnStarted,
+		Label:       "开始执行",
+		Text:        firstNonEmpty(item.SourceMessagePreview, item.ReplyToMessagePreview),
+		ThreadID:    threadID,
+		TurnID:      turnID,
+		QueueItemID: item.ID,
+	})
 	events := s.pendingInputEvents(surface, control.PendingInputState{
 		QueueItemID: item.ID,
 		Status:      string(item.Status),
@@ -455,6 +474,14 @@ func (s *Service) completeRemoteTurn(outcome *remoteTurnOutcome) []eventcontract
 	if outcome.Cause == terminalCauseCompleted {
 		s.finishAutoContinueEpisode(outcome)
 	}
+	s.appendProjectActivity(surface, control.ProjectActivityEntry{
+		Kind:        control.ProjectActivityTurnCompleted,
+		Label:       projectTurnCompletedLabel(outcome),
+		Text:        projectTurnCompletedText(outcome),
+		ThreadID:    outcome.ThreadID,
+		TurnID:      outcome.TurnID,
+		QueueItemID: item.ID,
+	})
 	events = append(events, s.maybeScheduleAutoWhipAfterRemoteTurn(surface, item, outcome.TurnID, outcome.Cause, outcome.FinalText, outcome.Summary)...)
 	s.clearRemoteTurn(outcome.InstanceID, outcome.TurnID)
 	return events
@@ -619,9 +646,20 @@ func (s *Service) renderTextToSurfaceWithSource(surface *state.SurfaceConsoleRec
 			event.TurnDiffSnapshot = turnDiff
 		}
 		if final && finalSummary != nil && i == lastBlockIndex {
-			event.FinalTurnSummary = finalSummary
+			summaryCopy := *finalSummary
+			summaryCopy.ProjectStatusLine = s.projectStatusFooter(surface)
+			event.FinalTurnSummary = &summaryCopy
 		}
 		events = append(events, event)
+	}
+	if final && strings.TrimSpace(text) != "" {
+		s.appendProjectActivity(surface, control.ProjectActivityEntry{
+			Kind:     control.ProjectActivityAssistantFinal,
+			Label:    "最后答复",
+			Text:     previewOfText(text),
+			ThreadID: threadID,
+			TurnID:   turnID,
+		})
 	}
 	if thread != nil && strings.TrimSpace(text) != "" {
 		snippet := previewOfText(text)

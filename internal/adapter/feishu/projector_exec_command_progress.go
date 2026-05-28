@@ -21,7 +21,8 @@ func (p *Projector) projectExecCommandProgress(chatID string, event eventcontrac
 		return nil
 	}
 	lines := execProgressRenderedContent(window.Lines)
-	elements := execCommandProgressElements(lines)
+	daemonLifecycleID := firstNonEmpty(event.DaemonLifecycleID, event.Meta.DaemonLifecycleID)
+	elements := execCommandProgressElementsWithControls(lines, daemonLifecycleID)
 	op := Operation{
 		GatewayID:            event.GatewayID,
 		SurfaceSessionID:     event.SurfaceSessionID,
@@ -81,6 +82,26 @@ func execCommandProgressElements(lines []string) []map[string]any {
 		})
 	}
 	return elements
+}
+
+func execCommandProgressElementsWithControls(lines []string, daemonLifecycleID string) []map[string]any {
+	elements := execCommandProgressElements(lines)
+	if controls := execCommandProgressControlElements(daemonLifecycleID); len(controls) != 0 {
+		elements = append(elements, controls...)
+	}
+	return elements
+}
+
+func execCommandProgressControlElements(daemonLifecycleID string) []map[string]any {
+	buttons := []map[string]any{
+		cardCallbackButtonElement("停止", "danger", localCardActionPayload(control.ActionStop, "", daemonLifecycleID), false, "default"),
+		cardCallbackButtonElement("插队", "default", localCardActionPayload(control.ActionProjectInterjectStart, "", daemonLifecycleID), false, "default"),
+	}
+	group := cardButtonGroupElement(buttons)
+	if group == nil {
+		return nil
+	}
+	return []map[string]any{cardDividerElement(), group}
 }
 
 func execCommandProgressMarkdownLine(line string) string {

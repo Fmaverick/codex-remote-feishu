@@ -56,6 +56,7 @@ type Event struct {
 	TargetPickerContext      *control.FeishuUITargetPickerContext
 	ThreadHistoryView        *control.FeishuThreadHistoryView
 	ThreadHistoryContext     *control.FeishuUIThreadHistoryContext
+	ProjectCockpitView       *control.ProjectCockpitView
 	PendingInput             *control.PendingInputState
 	Notice                   *control.Notice
 	PlanUpdate               *control.PlanUpdate
@@ -174,6 +175,11 @@ func (event Event) Normalized() Event {
 		}
 		if event.ThreadHistoryContext == nil {
 			event.ThreadHistoryContext = cloneThreadHistoryContext(payload.Context)
+		}
+	case ProjectCockpitPayload:
+		if event.ProjectCockpitView == nil {
+			view := payload.View
+			event.ProjectCockpitView = &view
 		}
 	case PendingInputPayload:
 		if event.PendingInput == nil {

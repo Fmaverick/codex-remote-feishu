@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	execprogress "github.com/kxn/codex-remote-feishu/internal/core/orchestrator/execprogress"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
@@ -363,6 +364,15 @@ func (s *Service) emitExecCommandProgress(surface *state.SurfaceConsoleRecord, p
 	if snapshot == nil {
 		return nil
 	}
+	if line := projectProgressSnapshotText(snapshot); line != "" {
+		s.appendProjectActivity(surface, control.ProjectActivityEntry{
+			Kind:     control.ProjectActivityProgress,
+			Label:    "最新动态",
+			Text:     line,
+			ThreadID: threadID,
+			TurnID:   turnID,
+		})
+	}
 	snapshot.TemporarySessionLabel = s.temporarySessionLabel(surface, progress.InstanceID, threadID, turnID)
 	outbound := eventcontract.Event{
 		Kind:                eventcontract.KindExecCommandProgress,
@@ -374,4 +384,17 @@ func (s *Service) emitExecCommandProgress(surface *state.SurfaceConsoleRecord, p
 		outbound.Meta.MessageDelivery = eventcontract.ReplyThreadAppendOnlyDelivery()
 	}
 	return []eventcontract.Event{outbound}
+}
+
+func projectProgressSnapshotText(progress *control.ExecCommandProgress) string {
+	if progress == nil || len(progress.Timeline) == 0 {
+		return ""
+	}
+	for i := len(progress.Timeline) - 1; i >= 0; i-- {
+		item := progress.Timeline[i]
+		if text := strings.TrimSpace(firstNonEmpty(item.Summary, item.Label, strings.Join(item.Items, ", "))); text != "" {
+			return text
+		}
+	}
+	return ""
 }

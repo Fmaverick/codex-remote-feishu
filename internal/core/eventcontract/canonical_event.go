@@ -41,6 +41,8 @@ func canonicalRootKind(event Event) Kind {
 		return KindPendingInput
 	case event.ThreadHistoryView != nil:
 		return KindThreadHistory
+	case event.ProjectCockpitView != nil:
+		return KindProjectCockpit
 	case event.TargetPickerView != nil:
 		return KindTargetPicker
 	case event.PathPickerView != nil:
@@ -116,6 +118,11 @@ func (event Event) CanonicalPayload() Payload {
 			}
 		}
 		return ThreadHistoryPayload{Context: cloneThreadHistoryContext(event.ThreadHistoryContext)}
+	case KindProjectCockpit:
+		if event.ProjectCockpitView != nil {
+			return ProjectCockpitPayload{View: *event.ProjectCockpitView}
+		}
+		return ProjectCockpitPayload{}
 	case KindPendingInput:
 		if event.PendingInput != nil {
 			return PendingInputPayload{State: *event.PendingInput}
@@ -207,7 +214,7 @@ func (event Event) CanonicalMessageDelivery() MessageDelivery {
 			FirstSendLane: MessageLaneReplyThread,
 			Mutation:      MessageMutationAppendOnly,
 		}
-	case KindPage, KindPathPicker, KindTargetPicker, KindThreadHistory, KindExecCommandProgress:
+	case KindPage, KindPathPicker, KindTargetPicker, KindThreadHistory, KindProjectCockpit, KindExecCommandProgress:
 		return MessageDelivery{
 			FirstSendLane: MessageLaneTopLevel,
 			Mutation:      MessageMutationPatchSameMessage,
@@ -270,6 +277,7 @@ func canonicalVisibilityClass(kind Kind, payload Payload) VisibilityClass {
 		KindPathPicker,
 		KindTargetPicker,
 		KindThreadHistory,
+		KindProjectCockpit,
 		KindPendingInput:
 		return VisibilityClassUINavigation
 	default:
@@ -290,6 +298,7 @@ func canonicalHandoffClass(kind Kind, payload Payload) HandoffClass {
 		KindPathPicker,
 		KindTargetPicker,
 		KindThreadHistory,
+		KindProjectCockpit,
 		KindPendingInput:
 		return HandoffClassNavigation
 	case KindExecCommandProgress, KindPlanUpdate:

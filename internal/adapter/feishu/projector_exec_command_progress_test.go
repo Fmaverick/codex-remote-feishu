@@ -110,7 +110,7 @@ func TestProjectExecCommandProgressCreatesDirectCard(t *testing.T) {
 	assertRenderedCardPayloadBasicInvariants(t, payload)
 	body, _ := payload["body"].(map[string]any)
 	elements, ok := cardPayloadElementsSlice(body["elements"])
-	if !ok || len(elements) != 2 {
+	if !ok || len(elements) < 2 {
 		t.Fatalf("expected one markdown element per command row, got %#v", payload)
 	}
 	if markdownContent(elements[0]) != expectedFirst || markdownContent(elements[1]) != expectedSecond {
@@ -581,7 +581,7 @@ func TestProjectExecCommandProgressRendersEachLineAsSeparatePlainTextElement(t *
 	assertRenderedCardPayloadBasicInvariants(t, payload)
 	body, _ := payload["body"].(map[string]any)
 	elements, ok := cardPayloadElementsSlice(body["elements"])
-	if !ok || len(elements) != 2 {
+	if !ok || len(elements) < 2 {
 		t.Fatalf("expected one markdown element per progress line, got %#v", payload)
 	}
 	if markdownContent(elements[0]) != "**执行**："+markdownCodeSpan("rg -n 'x' | sed -n '1,2p'") {
@@ -634,6 +634,12 @@ func TestProjectExecCommandProgressKeepsDynamicTextOutOfMarkdownElements(t *test
 		t.Fatalf("expected shared progress renderer to use markdown elements for formatted rows, got %#v", rendered)
 	}
 	for _, element := range rendered {
+		if _, ok := element["columns"]; ok {
+			continue
+		}
+		if tag, _ := element["tag"].(string); tag == "hr" {
+			continue
+		}
 		text := markdownContent(element)
 		if text == "" {
 			t.Fatalf("expected only markdown progress rows, got %#v", element)

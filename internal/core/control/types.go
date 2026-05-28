@@ -12,6 +12,11 @@ const (
 	ActionListInstances               ActionKind = "surface.menu.list_instances"
 	ActionStatus                      ActionKind = "surface.menu.status"
 	ActionWhere                       ActionKind = "surface.command.where"
+	ActionProjectCockpit              ActionKind = "surface.command.project_cockpit"
+	ActionProjectActivity             ActionKind = "surface.command.project_activity"
+	ActionProjectContinue             ActionKind = "surface.command.project_continue"
+	ActionProjectInterjectStart       ActionKind = "surface.button.project_interject_start"
+	ActionProjectInterjectMode        ActionKind = "surface.button.project_interject_mode"
 	ActionStop                        ActionKind = "surface.menu.stop"
 	ActionCompact                     ActionKind = "surface.menu.compact"
 	ActionSteerAll                    ActionKind = "surface.menu.steer_all"
@@ -516,6 +521,71 @@ type FinalTurnSummary struct {
 	TotalTokensInContext int
 	ContextInputTokens   *int
 	ModelContextWindow   *int
+	ProjectStatusLine    string
+}
+
+type ProjectActivityKind string
+
+const (
+	ProjectActivityUserMessage    ProjectActivityKind = "user_message"
+	ProjectActivityInterject      ProjectActivityKind = "interject"
+	ProjectActivityTurnStarted    ProjectActivityKind = "turn_started"
+	ProjectActivityTurnCompleted  ProjectActivityKind = "turn_completed"
+	ProjectActivityAssistantFinal ProjectActivityKind = "assistant_final"
+	ProjectActivityProgress       ProjectActivityKind = "progress"
+	ProjectActivityQueue          ProjectActivityKind = "queue"
+	ProjectActivityNotice         ProjectActivityKind = "notice"
+)
+
+type ProjectActivityEntry struct {
+	ID               string              `json:"id,omitempty"`
+	SurfaceSessionID string              `json:"surfaceSessionId,omitempty"`
+	Workspace        string              `json:"workspace,omitempty"`
+	ThreadID         string              `json:"threadId,omitempty"`
+	TurnID           string              `json:"turnId,omitempty"`
+	QueueItemID      string              `json:"queueItemId,omitempty"`
+	Kind             ProjectActivityKind `json:"kind,omitempty"`
+	Label            string              `json:"label,omitempty"`
+	Text             string              `json:"text,omitempty"`
+	Detail           string              `json:"detail,omitempty"`
+	CreatedAt        time.Time           `json:"createdAt,omitempty"`
+}
+
+type ProjectStatusKind string
+
+const (
+	ProjectStatusIdle     ProjectStatusKind = "idle"
+	ProjectStatusRunning  ProjectStatusKind = "running"
+	ProjectStatusQueued   ProjectStatusKind = "queued"
+	ProjectStatusWaiting  ProjectStatusKind = "waiting"
+	ProjectStatusOffline  ProjectStatusKind = "offline"
+	ProjectStatusDetached ProjectStatusKind = "detached"
+)
+
+type ProjectCockpitView struct {
+	SurfaceSessionID string
+	MessageID        string
+	Workspace        string
+	ThreadLabel      string
+	Status           ProjectStatusKind
+	StatusLabel      string
+	CurrentTask      string
+	CurrentStep      string
+	LastResult       string
+	QueuedCount      int
+	Running          bool
+	Idle             bool
+	CanContinue      bool
+	CanStop          bool
+	CanInterject     bool
+	ActivityOnly     bool
+	InterjectActive  bool
+	InterjectMode    string
+	InterjectExpires time.Time
+	Backend          agentproto.Backend
+	ProviderProfile  string
+	UpdatedAt        time.Time
+	Entries          []ProjectActivityEntry
 }
 
 type TimelineTextType string

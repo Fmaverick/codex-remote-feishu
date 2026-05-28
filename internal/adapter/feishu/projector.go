@@ -160,6 +160,8 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 			card:             rawCardDocument(title, "", cardThemePlan, elements),
 		}
 		return []Operation{applyTemporarySessionHeaderToOperation(applyReplyLaneToNewOperation(event, operation), payload.PlanUpdate.TemporarySessionLabel)}
+	case eventcontract.ProjectCockpitPayload:
+		return p.projectProjectCockpit(chatID, event, payload.View)
 	case eventcontract.SelectionPayload:
 		title, elements, ok := projectorpkg.SelectionViewStructuredProjection(payload.View, payload.Context, firstNonEmpty(event.DaemonLifecycleID, event.Meta.DaemonLifecycleID))
 		if !ok {
@@ -636,6 +638,12 @@ func (p *Projector) finalBlockExtraElements(summary *control.FileChangeSummary, 
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
 			"content": line,
+		})
+	}
+	if finalSummary != nil && strings.TrimSpace(finalSummary.ProjectStatusLine) != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": strings.TrimSpace(finalSummary.ProjectStatusLine),
 		})
 	}
 	if len(elements) == 0 {

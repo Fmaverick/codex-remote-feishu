@@ -66,6 +66,13 @@ type ThreadHistoryPayload struct {
 func (ThreadHistoryPayload) Kind() Kind { return KindThreadHistory }
 func (ThreadHistoryPayload) isPayload() {}
 
+type ProjectCockpitPayload struct {
+	View control.ProjectCockpitView
+}
+
+func (ProjectCockpitPayload) Kind() Kind { return KindProjectCockpit }
+func (ProjectCockpitPayload) isPayload() {}
+
 type PendingInputPayload struct {
 	State control.PendingInputState
 }

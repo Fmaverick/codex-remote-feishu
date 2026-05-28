@@ -13,6 +13,9 @@ const (
 	FeishuCommandList                 = "list"
 	FeishuCommandStatus               = "status"
 	FeishuCommandWhere                = "where"
+	FeishuCommandProject              = "project"
+	FeishuCommandNow                  = "now"
+	FeishuCommandContinue             = "continue"
 	FeishuCommandUse                  = "use"
 	FeishuCommandUseAll               = "useall"
 	FeishuCommandNew                  = "new"
@@ -101,6 +104,71 @@ type FeishuRecommendedMenu struct {
 }
 
 var feishuCommandSpecs = []feishuCommandSpec{
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandProject,
+			GroupID:          FeishuCommandGroupCurrentWork,
+			Title:            "项目",
+			CanonicalSlash:   "/project",
+			CanonicalMenuKey: "project",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "打开当前项目驾驶舱，查看进度和下一步操作。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+			RecommendedMenu: &FeishuRecommendedMenu{
+				Key:         "project",
+				Name:        "项目",
+				Description: "打开当前项目驾驶舱，查看进度和下一步操作。",
+			},
+		},
+		textExact: []feishuCommandMatch{
+			{alias: "/project", action: Action{Kind: ActionProjectCockpit}},
+			{alias: "/now", action: Action{Kind: ActionProjectCockpit}},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "project", action: Action{Kind: ActionProjectCockpit}},
+			{alias: "项目", action: Action{Kind: ActionProjectCockpit}},
+		},
+		extraActionRoutes: []feishuCommandActionRoute{
+			{kind: ActionProjectInterjectStart, canonicalSlash: "/project"},
+			{kind: ActionProjectInterjectMode, canonicalSlash: "/project"},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandContinue,
+			GroupID:          FeishuCommandGroupCurrentWork,
+			Title:            "继续干活",
+			CanonicalSlash:   "/continue",
+			CanonicalMenuKey: "continue",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "让当前项目沿着当前会话继续推进。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+		},
+		textExact: []feishuCommandMatch{
+			{alias: "/continue", action: Action{Kind: ActionProjectContinue}},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "continue", action: Action{Kind: ActionProjectContinue}},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandNow,
+			GroupID:          FeishuCommandGroupCurrentWork,
+			Title:            "当前进度",
+			CanonicalSlash:   "/now",
+			CanonicalMenuKey: "now",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "打开当前项目驾驶舱；等同于“项目”。",
+			ShowInHelp:       false,
+			ShowInMenu:       false,
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "now", action: Action{Kind: ActionProjectCockpit}},
+		},
+	},
 	{
 		definition: FeishuCommandDefinition{
 			ID:               FeishuCommandStop,

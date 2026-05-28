@@ -370,6 +370,18 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 			break
 		}
 	}
+	if _, ok := projectCockpitPayloadFromEvent(event); ok {
+		for _, operation := range operations {
+			if operation.Kind != feishu.OperationSendCard && operation.Kind != feishu.OperationUpdateCard {
+				continue
+			}
+			if strings.TrimSpace(operation.MessageID) == "" {
+				continue
+			}
+			a.service.RecordProjectCockpitMessage(event.SurfaceSessionID, operation.MessageID)
+			break
+		}
+	}
 	if payload, ok := targetPickerPayloadFromEvent(event); ok {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {

@@ -47,6 +47,8 @@ type Service struct {
 	pickers                   *servicePickerRuntime
 	catalog                   *serviceCatalogRuntime
 	progress                  *serviceProgressRuntime
+	projectActivityStore      ProjectActivityStore
+	nextProjectActivityID     int
 }
 
 type itemBuffer struct {
@@ -276,6 +278,10 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 			return s.filterEventsForSurfaceVisibility([]eventcontract.Event{{Kind: eventcontract.KindSnapshot, SurfaceSessionID: surface.SurfaceSessionID, Snapshot: s.buildSnapshot(surface)}})
 		case control.ActionWhere:
 			return s.filterEventsForSurfaceVisibility(s.where(surface))
+		case control.ActionProjectCockpit:
+			return s.filterEventsForSurfaceVisibility(s.showProjectCockpit(surface))
+		case control.ActionProjectActivity:
+			return s.filterEventsForSurfaceVisibility(s.showProjectActivity(surface))
 		case control.ActionAutoWhipCommand:
 			return s.filterEventsForSurfaceVisibility(s.handleAutoWhipCommand(surface, action))
 		case control.ActionAutoContinueCommand:
@@ -331,6 +337,16 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		events = s.detach(surface)
 	case control.ActionNewThread:
 		events = s.prepareNewThread(surface)
+	case control.ActionProjectCockpit:
+		events = s.showProjectCockpit(surface)
+	case control.ActionProjectActivity:
+		events = s.showProjectActivity(surface)
+	case control.ActionProjectContinue:
+		events = s.handleProjectContinue(surface, action)
+	case control.ActionProjectInterjectStart:
+		events = s.handleProjectInterjectStart(surface, action)
+	case control.ActionProjectInterjectMode:
+		events = s.handleProjectInterjectMode(surface, action)
 	case control.ActionCompact:
 		events = s.handleCompactCommand(surface, action)
 	case control.ActionSendFile:
@@ -491,6 +507,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []e
 	if isInternalHelperEvent(event) {
 		return nil
 	}
+	event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 	preface := s.flushPendingTurnTextIfTurnContinues(instanceID, event)
 	s.observeRemoteTurnActivity(instanceID, event)
 
@@ -648,13 +665,11 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []e
 	case agentproto.EventThreadTokenUsageUpdated:
 		return s.filterEventsForSurfaceVisibility(append(preface, s.progress.applyThreadTokenUsageUpdate(instanceID, event)...))
 	case agentproto.EventTurnModelRerouted:
-		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		return s.filterEventsForSurfaceVisibility(append(preface, s.applyTurnModelReroute(instanceID, event)...))
 	case agentproto.EventTurnDiffUpdated:
 		s.progress.recordTurnDiffSnapshot(instanceID, event)
 		return s.filterEventsForSurfaceVisibility(preface)
 	case agentproto.EventTurnPlanUpdated:
-		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		planEvents := s.applyTurnPlanUpdate(instanceID, event)
 		if len(planEvents) == 0 {
 			return s.filterEventsForSurfaceVisibility(preface)
@@ -663,7 +678,6 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []e
 		events = s.insertExecCommandProgressBoundary(instanceID, event.ThreadID, event.TurnID, events)
 		return s.filterEventsForSurfaceVisibility(events)
 	case agentproto.EventTurnStarted:
-		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		preface = append(preface, s.maybeSealPlanProposalForTurnStart(instanceID, event.ThreadID, event.TurnID)...)
 		trackActiveTurn := s.shouldTrackInstanceActiveTurn(instanceID, event)
 		if trackActiveTurn {
@@ -699,7 +713,6 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []e
 		events = append(events, s.markRemoteTurnRunning(instanceID, event)...)
 		return s.filterEventsForSurfaceVisibility(events)
 	case agentproto.EventTurnCompleted:
-		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		clearTrackedTurn := shouldClearTrackedInstanceActiveTurn(inst, event.ThreadID, event.TurnID)
 		if clearTrackedTurn {
 			inst.ActiveTurnID = ""
@@ -901,6 +914,7 @@ func (s *Service) Tick(now time.Time) []eventcontract.Event {
 		})
 	}
 	for _, surface := range s.root.Surfaces {
+		s.expireProjectInterject(surface, now)
 		if pending := surface.PendingHeadless; pending != nil && !pending.ExpiresAt.IsZero() && !now.Before(pending.ExpiresAt) {
 			events = append(events, s.expirePendingHeadless(surface, pending)...)
 		}

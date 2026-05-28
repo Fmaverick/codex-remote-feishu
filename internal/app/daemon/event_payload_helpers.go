@@ -17,6 +17,11 @@ func threadHistoryPayloadFromEvent(event eventcontract.Event) (eventcontract.Thr
 	return payload, ok
 }
 
+func projectCockpitPayloadFromEvent(event eventcontract.Event) (eventcontract.ProjectCockpitPayload, bool) {
+	payload, ok := event.CanonicalPayload().(eventcontract.ProjectCockpitPayload)
+	return payload, ok
+}
+
 func targetPickerPayloadFromEvent(event eventcontract.Event) (eventcontract.TargetPickerPayload, bool) {
 	payload, ok := event.CanonicalPayload().(eventcontract.TargetPickerPayload)
 	return payload, ok

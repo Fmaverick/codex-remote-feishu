@@ -117,6 +117,7 @@ func RunMainWithArgs(ctx context.Context, args []string, version, branch string)
 		Paths:      paths,
 		MinIdle:    1,
 	})
+	app.service.SetProjectActivityStore(newProjectActivityStore(filepath.Join(paths.StateDir, "project-activity.ndjson")))
 	app.SetToolRuntime(toolruntime.Config{
 		ListenAddr: net.JoinHostPort(loadedConfig.Config.Tool.ListenHost, strconv.Itoa(loadedConfig.Config.Tool.ListenPort)),
 		StateFile:  paths.ToolServiceFile,

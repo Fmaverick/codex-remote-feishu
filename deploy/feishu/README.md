@@ -23,10 +23,9 @@
    - 粘贴模板中的 `scopes_import`
    - 点击“保存并申请开通”
 6. 打开“机器人菜单”，创建以下菜单 key：
+   - `project`
    - `menu`
    - `stop`
-   - `steerall`
-   - `new`
    - `reasoning`
    - `model`
    - `access`
@@ -37,8 +36,10 @@ WebSetup 里的推荐菜单、`app-template.json` 里的菜单清单，以及飞
 
 文本命令不需要在飞书控制台单独注册，直接给机器人发消息即可。当前建议保留这些命令：
 
+- `/project`
 - `/list`
 - `/status`
+- `/where`
 - `/new`
 - `/use`
 - `/useall`
@@ -122,7 +123,7 @@ alias 仍兼容，但不建议继续当成新的主展示入口：
 - `im.message.reaction.created_v1` 负责 queued 文本的 `ThumbsUp` steering
 - `im.message.reaction.deleted_v1` 负责在用户撤销 reaction 时同步撤销对应的反馈动作
 - `im.message.recalled_v1` 负责撤回尚未发送的排队输入，或取消 staged image
-- `application.bot.menu_v6` 负责静态 bot 菜单里的 `menu/stop/steerall/new/reasoning/model/access`
+- `application.bot.menu_v6` 负责静态 bot 菜单里的 `project/menu/stop/reasoning/model/access`
 
 ### 3. 回调配置
 

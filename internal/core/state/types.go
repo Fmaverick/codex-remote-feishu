@@ -256,44 +256,77 @@ type SurfaceConsoleRecord struct {
 	ActorUserID      string
 	// ProductMode carries the outer runtime shape: headless vs vscode.
 	// Backend carries the inner provider choice inside that shape.
-	ProductMode          ProductMode
-	Backend              agentproto.Backend
-	CodexProviderID      string
-	ClaudeProfileID      string
-	Verbosity            SurfaceVerbosity
-	PlanMode             PlanModeSetting
-	PlanModeOverrideSet  bool
-	ClaimedWorkspaceKey  string
-	AttachedInstanceID   string
-	SelectedThreadID     string
-	LastInboundAt        time.Time
-	RouteMode            RouteMode
-	Abandoning           bool
-	DispatchMode         DispatchMode
-	ActiveTurnOrigin     agentproto.InitiatorKind
-	ActiveQueueItemID    string
-	QueuedQueueItemIDs   []string
-	StagedImages         map[string]*StagedImageRecord
-	StagedFiles          map[string]*StagedFileRecord
-	QueueItems           map[string]*QueueItemRecord
-	PreparedThreadCWD    string
-	PreparedFromThreadID string
-	PreparedAt           time.Time
-	PromptOverride       ModelConfigRecord
-	PendingHeadless      *HeadlessLaunchRecord
-	PendingRequests      map[string]*RequestPromptRecord
-	PendingRequestOrder  []string
-	ActiveRequestCapture *RequestCaptureRecord
-	ActiveExecProgress   *ExecCommandProgressRecord
-	ActiveReasoning      *SurfaceReasoningProgressRecord
-	RecentFinalCards     []*FinalCardRecord
-	SurfaceMessageSeq    int
-	SurfaceMessages      map[string]*SurfaceMessageRecord
-	LastThreadHistory    *agentproto.ThreadHistoryRecord
-	LastSelection        *SelectionAnnouncementRecord
-	AutoWhip             AutoWhipRuntimeRecord
-	AutoContinue         AutoContinueRuntimeRecord
-	ReviewSession        *ReviewSessionRecord
+	ProductMode             ProductMode
+	Backend                 agentproto.Backend
+	CodexProviderID         string
+	ClaudeProfileID         string
+	Verbosity               SurfaceVerbosity
+	PlanMode                PlanModeSetting
+	PlanModeOverrideSet     bool
+	ClaimedWorkspaceKey     string
+	AttachedInstanceID      string
+	SelectedThreadID        string
+	LastInboundAt           time.Time
+	RouteMode               RouteMode
+	Abandoning              bool
+	DispatchMode            DispatchMode
+	ActiveTurnOrigin        agentproto.InitiatorKind
+	ActiveQueueItemID       string
+	QueuedQueueItemIDs      []string
+	StagedImages            map[string]*StagedImageRecord
+	StagedFiles             map[string]*StagedFileRecord
+	QueueItems              map[string]*QueueItemRecord
+	PreparedThreadCWD       string
+	PreparedFromThreadID    string
+	PreparedAt              time.Time
+	PromptOverride          ModelConfigRecord
+	PendingHeadless         *HeadlessLaunchRecord
+	PendingRequests         map[string]*RequestPromptRecord
+	PendingRequestOrder     []string
+	ActiveRequestCapture    *RequestCaptureRecord
+	ActiveExecProgress      *ExecCommandProgressRecord
+	ActiveReasoning         *SurfaceReasoningProgressRecord
+	RecentFinalCards        []*FinalCardRecord
+	ProjectCockpitMessageID string
+	SurfaceMessageSeq       int
+	SurfaceMessages         map[string]*SurfaceMessageRecord
+	LastThreadHistory       *agentproto.ThreadHistoryRecord
+	LastSelection           *SelectionAnnouncementRecord
+	AutoWhip                AutoWhipRuntimeRecord
+	AutoContinue            AutoContinueRuntimeRecord
+	ReviewSession           *ReviewSessionRecord
+	ProjectActivity         []ProjectActivityRecord
+	PendingInterject        *ProjectInterjectRecord
+}
+
+type ProjectInterjectMode string
+
+const (
+	ProjectInterjectModeSteer    ProjectInterjectMode = "steer"
+	ProjectInterjectModePriority ProjectInterjectMode = "priority"
+)
+
+type ProjectInterjectRecord struct {
+	Mode               ProjectInterjectMode
+	ActorUserID        string
+	SourceMessageID    string
+	CreatedAt          time.Time
+	ExpiresAt          time.Time
+	OwnerCardMessageID string
+}
+
+type ProjectActivityRecord struct {
+	ID               string
+	SurfaceSessionID string
+	Workspace        string
+	ThreadID         string
+	TurnID           string
+	QueueItemID      string
+	Kind             string
+	Label            string
+	Text             string
+	Detail           string
+	CreatedAt        time.Time
 }
 
 type ReviewSessionPhase string
