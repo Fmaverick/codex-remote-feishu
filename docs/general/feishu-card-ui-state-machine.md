@@ -1,8 +1,8 @@
 # Feishu 卡片 UI 状态机
 
 > Type: `general`
-> Updated: `2026-05-13`
-> Summary: 当前实现把 `codex` 这一条 headless 可见命令面收敛到 `workspace` 命令族与四张独立 target-picker 卡：bare `/workspace` 与 `/workspace new` 是 page-owner 父页，`/workspace list`、`/workspace new dir`、`/workspace new git`、`/workspace new worktree` 分别承接切换/目录/Git/Worktree 四条业务路径，`/list` `/use` `/useall` 在 `codex` 下只保留 alias；而当前 live 的 Claude 可见命令面则复用同一套菜单/target-picker/page substrate：`claude` 的 `current_work` 保留 `/new` 等当前工作动作，`switch_target` 显式开放 `/workspace new dir`、`/workspace detach`、`/list`、`/use`，`常用工具` 显示 `/history` 与 `/sendfile`，裸 `/detach` 则退回 hidden + allow 兼容 alias。`send_settings` 里现在显式收口 `/mode` 与 backend 无关的 `/plan`，而 backend 互斥入口则收口成 `codex headless` 的 `/codexprovider` 与 `claude headless` 的 `/claudeprofile`，`vscode` 仍隐藏这两条 provider/profile 入口；同时 bare 错 backend 命令也会在 command support gate 被显式拒绝，不再偷偷开错配置页。系统管理面这轮也已收口到 bare `/admin` inline page：根页显式暴露 `/admin web`、`/admin localweb`，以及仅 Linux/macOS 暴露的 `/admin autostart`；`/debug admin` 已废弃并改指向 `/admin web`。菜单与 page-owner 内的同卡导航这轮进一步收口到本地 callback substrate：projector 会把 keep/back/root/menu 这类 page-local 动作投影成 `page_local_action` / `page_local_submit`，gateway 解析后标记 `Action.LocalPageAction=true`，runtime 不再先走 command provenance 校验；同样的 local substrate 现在也覆盖 daemon / cron 直出 page 的 current-card 按钮，包括 `/admin`、`/debug`、`/upgrade`、`/cron` 各级 page、`/bendtomywill` success card 的回滚按钮，以及 review final-card footer follow-up。真正需要继续走 catalog freshness 的 live 命令按钮/表单才保留 `page_action` / `page_submit + catalog provenance`。其余基线保持不变：`/workspace` 根页与 `/workspace new` 子页现在都会直接暴露 `从 Worktree 新建`，菜单 handoff 进入 workspace page 后也会把当前 `message_id + from_menu` 记入 page-owner runtime，target-picker owner runtime 则继续保存结构化父页 back payload，后续目录/Git/worktree 子卡的 `返回上一层` 会稳定回到对应父页，不再退化成 target-picker 内部 no-op 返回。`/workspace list` 的 target page 与 `/workspace new worktree` 的基准工作区 dropdown 现已接入 byte-budget dropdown pagination：workspace / session 双下拉与单 workspace 下拉统一通过 `target_picker_page(picker_id + field_name + cursor)` 走同卡翻页，target page 的 workspace 预算目标 `1/3`、session `2/3`，并支持空余预算回借；workspace 翻页会重算 session 候选，session 翻页则保留 workspace 状态并清空不可见会话选择。`/use`、`/useall` 与锁定工作区的恢复 picker 在工作区已确定后现在会额外带上 `新建会话` fallback，而 `/workspace list` 与 alias `/list` 继续只做既有会话切换。复用 path picker 现在也接入同类 byte-budget dropdown pagination：目录模式单下拉、文件模式目录/文件双下拉、target-picker owner-subpage 的 compact 目录下拉都改走 `path_picker_page(picker_id + field_name + cursor)`；目录 lane 固定保留 `.` / `..`，文件 lane 翻页会清空不可见文件选择并禁用 confirm。selection 卡片这轮进一步收口到 `FeishuSelectionView + FeishuSelectionSemantics`：VS Code `/list` 继续按钮式实例卡，VS Code `/use` / `/useall` 统一成当前实例内的 dropdown，大集合候选会按 transport byte budget 动态分页，并通过 `thread_selection_page(view_mode + cursor)` 原地翻页；若当前 thread 不在可见页，不再伪造 `initial_option`。kick-thread confirm 也走同一 selection substrate；adapter live 路径不再回退 `FeishuDirectSelectionPrompt`。workspace/session family 这轮还把 provenance roundtrip 补到了 selection / target picker callback：page、selection、target-picker 现在都会在 payload 里继续携带 `catalog_family_id` / `catalog_variant_id` / `catalog_backend`，后续分页、刷新、确认与返回不再主要依赖裸 `ActionKind` 反推 family。path / target / thread 这三类 dropdown lane 与 callback 取值规则当前进一步收口到 `internal/adapter/feishu/selectflow` 的 `PaginatedSelectFlowDefinition`：projector 只提供 lane read model 与页面上下文，gateway 统一按 `field_name + payload value + option/form_value` contract 恢复选中值，不再分别维护 path/target/thread 三套 recover 规则。其余 target picker / path picker / history 继续共用 owner-card runtime，并统一承载 `body / notice / sealed` contract；launcher-backed bare config cards 这轮还补上了 sealed terminal 页保留显式 footer 的约束，因此菜单进入 `/mode` `/autowhip` `/autocontinue` `/reasoning` `/access` `/plan` `/model` `/verbose` `/claudeprofile` `/codexprovider` 后，即使 apply 成功把参数卡封成终态，底部 `返回菜单/返回上一层` 也不会再被 page normalize 错误清掉。request family 新增 `tool_callback` 只读 fail-closed 分支：卡片会直接以 sealed `waiting_dispatch` 态落地，无按钮、无表单，并由服务端自动回写 unsupported 结构化结果；本轮还新增了 `/autocontinue` 参数卡与 reply-thread、tail-only patch 的自动继续状态卡，以及 detour 临时会话的 header subtitle 标识 / 原锚点回切提示；review mode 这轮扩到 commit review：bare `/review` / `/review commit` 会打开最近 10 条 commit 的 picker page，picker submit 现在通过 `page_local_submit(surface.command.review + action_arg_prefix=commit)` 继续走 detached review owner，cancel 则走 `page_local_action(surface.command.review + action_arg=cancel)` 收口当前 picker runtime；普通 final card 当前只会在该 surface 的 `/review` command support 允许执行时，才按当前 thread cwd 对应 Git worktree 的 dirty 状态追加 `Review 待提交内容`，并对正文里命中的“最近 commit”追加 `评审 <short-sha>` footer 按钮；review final card 只保留 `放弃审阅` / `按审阅意见继续修改` 两个显式出口。这四类 review final-card follow-up 现在统一走 `page_local_action + daemon_lifecycle_id` 的 current-card local callback contract：点击当前卡时不会先触发 `command_entry_expired`，但仍继续依赖 `daemon_lifecycle_id`、final-card anchor 与 review session runtime 做 freshness / old-card reject。它们的 follow-up 结果保持原语义：普通 final card 上的 detached review 入口仍 append-only，不 patch 掉源 final card；review session 卡上的退出 / 继续修改仍保持当前卡语义。review detached frontstage 现在与 detour 共用同一条 temporary-session subtitle substrate：`正在进入审阅` notice、request / plan / `turn_failed` / shared progress / final reply 都统一显示 `临时会话 · 审阅`，而 review final card 标题保持默认 `✅ 最后答复`，不再额外走 `审阅中 ·` title-prefix 旁路。`/upgrade` 根页现在会按 standalone Codex 安装状态决定是否暴露 `Codex 升级`，`/upgrade latest` 与 `/upgrade codex` 共用 `upgrade_owner_flow` callback family，但分别收口到 release / Codex 两条 owner-card flow；同时还新增 `/bendtomywill` latest-turn 修补流：它先打开多题 `request_user_input` 风格卡，最终收口到 patchable progress/success/failure 页面，并通过本地 current-card rollback 按钮承接最近一次回滚。注意：2026-04-29 已批准的下一轮 Claude MVP 产品边界不再由本文定义，而改以 [Claude Backend Integration Plan](../inprogress/claude-backend-integration-plan.md) 第 `7.6` / `12.1` 节为准；本文仍只记录当前 live 实现与其 Feishu UI 投影。
+> Updated: `2026-05-27`
+> Summary: 当前 live 的 Feishu 卡片 UI 已把 workspace/page/request/review 等 owner-flow 收口到稳定的 page / picker / request substrate；immediate `select_static` callback 的取值规则统一落在 `internal/adapter/feishu/selectflow`，按 `payload value -> form_value[field_name] -> option/options` 恢复，避免群聊回调把旧 option 误当成新选择；显式表单提交家族仍保持各自既有 submit 语义。
 
 ## 1. 文档定位
 
@@ -53,7 +53,7 @@
   - 负责把 Feishu callback 解析成 `control.Action`
   - 负责决定 callback 是同步等待 replace，还是立即 ack 后异步处理
   - 对无 callback 的共享更新卡，负责执行首次发送与后续 `message.patch`
-  - path / target / thread dropdown 的选中值恢复当前统一经 `internal/adapter/feishu/selectflow` 收口：同一条 helper 负责 `payload value -> option/options -> form_value[field_name]` 恢复顺序，gateway 不再按 picker 类型分别维护 `selected-entry` / `form-value` fallback
+  - path / target / thread / history 这类 immediate `select_static` callback 的选中值恢复当前统一经 `internal/adapter/feishu/selectflow` 收口：gateway 不再按 picker 类型分别维护 `selected-entry` / `form-value` fallback，而是统一按 `payload value -> form_value[field_name] -> option/options` 恢复，避免群聊 `select_static` 回调把上一轮 option 误判成新选择
 - `daemon`
   - 负责 old-card / old-message 生命周期判定
   - 负责在 ingress 层统一把动作交给主 `ApplySurfaceAction()` 入口；`FeishuUIIntent` 分流发生在 service 内，避免绕开 request/path-picker 等产品门禁
@@ -131,7 +131,7 @@
 | bare `/review` / `/review commit` / `/review uncommitted` / 普通 final card review footer / review final card `放弃审阅` / `按审阅意见继续修改` | `mixed` | bare `/review` 当前会先进入一张 review root page，而不是直接打开 commit picker：该页显式提供 `Review 待提交内容` 与 `Review 指定提交` 两个按钮，并都走 `page_local_action + daemon_lifecycle_id` 的当前卡 freshness 链路，不再继续依赖 catalog provenance。`Review 待提交内容` 会在当前 root card 上同位收口成 detached review owner 的 `正在进入审阅` 首卡；`Review 指定提交` 才会继续在当前 root card 上同位进入 commit picker。bare `/review commit` 仍可直接打开 commit picker；picker 继续记录当前 `instance_id + parent_thread_id + thread_cwd + recent_commits`，并要求后续 submit/cancel 命中同一 `message_id` 才继续；若中途切换到其他实例，picker submit 会直接拒绝并要求重新发送 `/review commit`。picker submit / cancel 现在也改成 page-local substrate：submit 通过 `page_local_submit(surface.command.review + action_arg_prefix=commit)` 组装 canonical `/review commit <full-sha>` 并进入 detached review owner，cancel 通过 `page_local_action(surface.command.review + action_arg=cancel)` 收口当前 picker runtime；bare `/review uncommitted` 继续直接汇合到同一 detached review owner，但不再反向定义 `/review` 本身的语义。普通 final card 的 `Review 待提交内容` 与 `评审 <short-sha>` footer 仍保持 append-only：projector 只会在原 final chunk 底部追加按钮，不 patch 掉源 final card。review session final card 上的 `放弃审阅` / `按审阅意见继续修改` 仍复用 stamped first-result replacement，在当前审阅结果卡上同位收口。真正的 detached review session 启动、review runtime 清理，以及把审阅结果带回 parent thread 继续修改，仍由 orchestrator 承接。普通 final card 只有在对应 thread cwd 落在 Git repo/worktree 内且存在未提交内容时才会追加 `Review 待提交内容`；commit footer 则只依赖最近 commit 命中，不依赖 dirty 状态；review session 内的 final card 只保留 `放弃审阅` / `按审阅意见继续修改` 两个显式出口 |
 | bare `/cron` / `/upgrade` / `/debug` | `mixed` | 参数不足时当前统一打开 `FeishuPageView` 根页，不再顺手展示独立状态卡；根页现在只保留实际菜单入口，不再混入“快捷操作 / 手动输入 / 说明文案”，其中 `/debug` 根页当前只保留迁移到系统管理后的入口按钮：`打开系统管理`、`生成外链`、`查看本地地址`；`/upgrade track` 子页当前仅保留 track 切换按钮；`/upgrade` 根页会在当前 Codex 是 standalone-upgradeable 安装时额外显示 `Codex 升级` 按钮，bundle-backed 或其他不可升级安装则静默隐藏；`/upgrade dev` 与 `开发构建` 按钮当前会在允许 dev feed 的 flavor（源码 `dev` 与 release `alpha`）下暴露，`/upgrade local` 与 `本地升级` 只会在源码 `dev` flavor 下暴露。若来自带 `daemon_lifecycle_id` 的当前 page callback，且动作属于“不立即执行”的根页 / 子页 / 非法参数回显路径，daemon 会走 page result replacement，把下一张 page 继续同位替回当前卡；真正立即执行的动作（如 `/cron reload`、`/cron repair`、`/cron run <id>`、`/upgrade latest`、`/upgrade codex`、允许 dev feed 的 flavor 下的 `/upgrade dev`、源码 `dev` flavor 下的 `/upgrade local`）仍进入各自原有执行流。`/debug admin` 当前不再执行旧流，而是直接拒绝并提示改用 `/admin web`。文本或表单输入的非法参数当前不会外跳 notice，而是继续留在同一张 page 上显示错误并保留表单默认值 |
 | stamped `/vscode-migrate` / `vscode_migrate_owner_flow` | `mixed` | `/vscode-migrate` 当前先打开 `FeishuPageView` root page；若入口来自带 `daemon_lifecycle_id` 的当前卡 callback，daemon 会走 page-result replacement，把 root page / 校验失败页 / `仅 VS Code 模式可用` 页同位替回当前卡。真正执行迁移的按钮当前发 `vscode_migrate_owner_flow` callback，迁移结果与后续 `/list` / open VS Code / 恢复提示都会继续 patch 在同一张 guidance card 上，不再经由旧文本重解析回调或 bare continuation |
-| `request approve` / `approval_command` / `approval_file_change` / `approval_network` / `request_user_input` / `tool_callback` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、`request_control` payload、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、request family 统一的 `editing -> waiting_dispatch -> resolved/restore` 生命周期，以及由 orchestrator 单点 request presentation owner 基于 `requestType/rawType/metadata` 归一化出的 `SemanticKind + Title/Sections/Options/Questions/HintText` contract，属于产品状态机。`tool_callback` 当前也走同一 owner，但落成只读 fail-closed auto-dispatch；projector 当前只消费 `FeishuRequestView`，不再自己回猜 approval / permissions / MCP subtype |
+| `request approve` / `approval_command` / `approval_file_change` / `approval_network` / `approval_can_use_tool` / `request_user_input` / `tool_callback` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` / `revise` | `mixed` | 卡片按钮、表单字段、`request_control` payload、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、request family 统一的 `editing -> waiting_dispatch -> resolved/restore` 生命周期，以及由 orchestrator 单点 request presentation owner 基于 `requestType/rawType/metadata` 归一化出的 `SemanticKind + Title/Sections/Options/Questions/HintText` contract，属于产品状态机。`tool_callback` 当前也走同一 owner，但落成只读 fail-closed auto-dispatch；projector 当前只消费 `FeishuRequestView`，不再自己回猜 approval / permissions / MCP subtype |
 | `attach_instance` / `attach_workspace` / `use_thread` | `product-owned` | 卡片只负责把选择结果送入产品层；是否允许接管、是否跨 workspace、接管后进入什么 route 都由 orchestrator 决定 |
 | `/follow` | `product-owned` | 是否可用、是否被冻结、跟随到哪个 thread、headless/vscode 主分叉差异都属于 core 状态机 |
 | `/new` | `product-owned` | 是否进入 `new_thread_ready`、何时消耗第一条消息、request gate 是否阻断都属于 core 状态机 |
@@ -203,7 +203,7 @@
 - `request_respond` / `submit_request_form` 与 `upgrade_owner_flow` / `vscode_migrate_owner_flow` 当前在 gateway 解析后只写入 `Action.Request` / `Action.OwnerFlow` family；这些回调不再依赖 root `Action.Request*` 或 root `PickerID/OptionID` 兼容字段作为 live 路径输入
 - 分页导航与 target/path picker / selection dropdown 当前也复用这套 schema：projector 负责写入 `page` / `view_mode` / `return_page` / `picker_id` / `field_name` / `cursor`，gateway 负责解析回 `control.Action`，Feishu UI controller 再用这些字段重建当前页 view、thread selection view 或当前 picker 并 inline replace 原卡。其中 thread/history 等固定分页仍用 `page`，target/path picker / VS Code thread dropdown 的动态 byte-budget 分页改用 `cursor(start-index)`。
 - workspace/session family 的 selection / target picker callback 当前也会在有来源上下文时继续补写 `catalog_family_id` / `catalog_variant_id` / `catalog_backend`。这意味着 bare `/list` `/use` `/useall`、菜单按钮、selection refresh、target-picker 翻页/确认这些后续动作，都能继续把 family provenance 带回 gateway / orchestrator，而不是只剩 `ActionKind` / `field_name`。
-- adapter 内部这组 lane/read-model contract 现统一由 `internal/adapter/feishu/selectflow` 承接：`PaginatedSelectFlowDefinition` 拥有默认 `field_name`、payload value key 与共享 pagination hint；projector 与 gateway 通过同一份定义对齐 lane 字段、hint 和 callback recover 规则。
+- adapter 内部这组 lane/read-model contract 现统一由 `internal/adapter/feishu/selectflow` 承接：`PaginatedSelectFlowDefinition` 拥有默认 `field_name`、payload value key、共享 pagination hint，以及按 flow 显式声明的 recover precedence；projector 与 gateway 通过同一份定义对齐 lane 字段、hint 和 callback recover 规则。
 
 ### 4.2 当前常见 payload 字段
 
@@ -217,29 +217,29 @@
 | `show_all_workspaces` / `show_recent_workspaces` | `page` | headless 主链下重新打开 `/workspace list` 切换卡；旧分页字段继续保留 transport 兼容 |
 | `show_all_thread_workspaces` / `show_recent_thread_workspaces` | `page` | headless 主链下重新打开 `/workspace list` 切换卡；旧分页字段继续保留 transport 兼容 |
 | `show_workspace_threads` | `workspace_key`、`page`、`return_page` | headless 主链下以指定 workspace 重新打开 `/workspace list` 切换卡，并预填当前 workspace；legacy selection path 下仍可表示进入某个 workspace 的会话详情 |
-| `target_picker_select_workspace` | `picker_id`、`field_name` | `/workspace list` 切换卡与 `/workspace new worktree` 基准工作区下拉的回调；gateway 从 `form_value[field_name]` / `option` / `options` 中提取工作区键 |
-| `target_picker_select_session` | `picker_id`、`field_name` | `/workspace list` 切换卡的会话下拉回调；gateway 从 `form_value[field_name]` / `option` / `options` 中提取 thread；当前 headless 卡不再发出 `new_thread` |
+| `target_picker_select_workspace` | `picker_id`、`field_name` | `/workspace list` 切换卡与 `/workspace new worktree` 基准工作区下拉的回调；gateway 按 `payload value -> form_value[field_name] -> option -> options` 恢复工作区键，避免群聊 `select_static` 回调把旧 option 误当成新选择 |
+| `target_picker_select_session` | `picker_id`、`field_name` | `/workspace list` 切换卡的会话下拉回调；gateway 按 `payload value -> form_value[field_name] -> option -> options` 恢复 thread；当前 headless 卡不再发出 `new_thread` |
 | `target_picker_page` | `picker_id`、`field_name`、`cursor` | `/workspace list` target page 与 `/workspace new worktree` 基准工作区 dropdown 的翻页回调；`field_name` 区分 workspace / session lane，`cursor` 是动态 byte-budget 分页使用的 start-index。target page 的 workspace 翻页会把对应 cursor 处的 workspace 设为当前选择并重算 session 列表；session 翻页会保留 workspace 状态，但显式清空当前 session 选择，避免 invisible confirm。worktree workspace 翻页会保留 branch / directory 草稿，只重算基准工作区与目标路径预览 |
 | `target_picker_open_path_picker` | `picker_id`、`target_value`、`request_answers` | `/workspace new dir` / `/workspace new git` 主卡的子步骤导航；当前 `target_value` 表示 `local_directory` 或 `git_parent_dir`，`request_answers` 用来把 Git 主卡里的 `repo_url` / `directory_name` 草稿一起带回服务端 |
 | `target_picker_cancel` | `picker_id`、`request_answers` | 四张独立工作会话卡共用的退出按钮；gateway 只需命中当前 active picker，并把必要草稿带回；服务端随后会把当前卡封成对应 terminal 态：普通编辑态为 `已取消`，Git import processing 态为 `已取消导入`，worktree processing 态为 `已取消创建`，随后清掉 active picker / owner-card flow |
 | `target_picker_confirm` | `picker_id`、`target_picker_workspace`、`target_picker_session`、`request_answers` | 四张独立工作会话卡共用的确认按钮：`/workspace list` 把当前表单值送到产品层执行 attach / switch；`/workspace new dir` 当前第一次确认只做服务端 `检查目标目录`，并把 `目标目录`、busy、known workspace、目标目录已存在、非法目录名等结果回写到同一张 owner card；只有最近一次检查结果仍然有效时，第二次确认才会真的执行 `接入并继续` 或 `创建并继续`。`/workspace new git` 与 `/workspace new worktree` 继续在同一张 owner card 上做 submit-time validation 并进入 processing / terminal；Git 路径要求 repo / 落地父目录预览有效，worktree 路径则从 `request_answers` 里恢复 `target_picker_worktree_branch_name` / `target_picker_worktree_directory_name` 草稿，并要求基准工作区、分支名和目标路径预览有效；Git 长链路会先 patch 成 `正在导入 Git 工作区`，随后在 clone 成功后继续 patch 到“接入工作区 / 准备会话”，并允许同卡 `取消导入`；worktree 长链路会先 patch 成 `正在创建 Worktree 工作区`，随后在创建成功后继续 patch 到“正在接入工作区”，并允许同卡 `取消创建` |
 | `history_page` | `picker_id`、`page` | `/history` 列表页翻页；命中当前 history owner-card flow 时同步替换当前卡为 loading，然后异步重查当前 thread history |
-| `history_detail` | `picker_id`、`turn_id` 或 `field_name + selected option` | `/history` 进入某一轮详情，或在详情页前后切换；命中当前 history owner-card flow 时同样先切 loading；gateway 继续兼容 `form_value[field_name]` / `option` / `options` 取值 |
+| `history_detail` | `picker_id`、`turn_id` 或 `field_name + selected option` | `/history` 进入某一轮详情，或在详情页前后切换；命中当前 history owner-card flow 时同样先切 loading；gateway 按 `payload value -> form_value[field_name] -> option -> options` 恢复 turn id |
 | `upgrade_owner_flow` | `picker_id`、`option_id` | `/upgrade latest` 与 `/upgrade codex` 共用的 daemon owner-card 显式动作；gateway 只解析 `picker_id` / `option_id`，daemon 再按 flow id 前缀路由到 release 或 Codex flow。release flow 当前使用 `check` / `confirm` / `cancel`，Codex flow 当前使用 `check` / `confirm`；两者都要求命中当前 active flow id，旧卡或他人卡片不会继续改写升级状态。首卡若没有现成 `message_id`，会先以 page `TrackingKey` append，待 gateway 分配 `message_id` 后再回写到对应 owner flow，后续 checking / confirm-ready / running / terminal 一律 patch 同一张卡 |
 | `plan_proposal` | `picker_id`、`option_id` | 提案计划卡的 owner-flow callback；`option_id` 当前只用 `execute` / `execute_new` / `cancel`。gateway 只负责按当前 active proposal id 解析回 `ActionPlanProposalDecision`；真正的 `PlanMode=off`、继续派发 follow-up turn，以及 seal 当前卡，仍由 orchestrator 决定 |
 | `page_local_action` | `action_kind`、`action_arg(可选)` | 当前卡上的本地按钮动作；gateway 解析后直接写回 `Action.Kind` 并生成 canonical `Action.Text`，同时把 `Action.LocalPageAction=true`。这条 payload 用于 keep/back/root/menu 与其他 page-owner 本地导航，也用于 `/debug` `/upgrade` `/cron` 这类 direct page 的 current-card 按钮、`/bendtomywill` success card 的 rollback，以及 review final-card footer 的 `Review 待提交内容` / `评审 <short-sha>` / `放弃审阅` / `按审阅意见继续修改`。它不带 catalog provenance，也不会先触发 `command_entry_expired`。若动作后续仍路由到 daemon command，runtime 会继续把“这次确实来自当前卡 callback”的事实传给下游 daemon command |
 | `page_local_submit` | `action_kind`、`field_name`、`action_arg_prefix(可选)` | page 卡内的本地表单提交；gateway 继续按 `form_value[field_name]`/`option` 取参数并组装 canonical `Action.Text`，同时把 `Action.LocalPageAction=true`。这条 payload 用于仍留在当前 page/session 语义内的本地提交，不带 catalog provenance |
 | `page_action` | `action_kind`、`action_arg(可选)`、`catalog_family_id`、`catalog_variant_id`、`catalog_backend` | page 卡按钮的结构化动作；gateway 解析后直接写回 `Action.Kind`，并用 `BuildFeishuActionText` 生成 canonical `Action.Text`；命令类 live 按钮当前要求 payload 自带完整 catalog provenance，缺失字段、legacy default variant 或当前 surface 上下文变化时，runtime 会拒绝为 `command_entry_expired`。当前继续保留这条 payload 的主要是那些必须继续走 catalog freshness 的 live 命令按钮，而不再包括 review final-card footer follow-up |
 | `page_submit` | `action_kind`、`field_name`、`action_arg_prefix(可选)`、`catalog_family_id`、`catalog_variant_id`、`catalog_backend` | page 卡表单提交；gateway 从 `form_value[field_name]`/`option` 取参数，按 `action_arg_prefix + 参数` 组装后写回 `Action.Text`；命令类 live 表单当前同样要求 payload 自带完整 catalog provenance，缺失字段、legacy default variant 或当前 surface 上下文变化时，runtime 会拒绝为 `command_entry_expired`。当前仍保留这条路径的是那些确实需要继续走 catalog provenance 的 live 命令表单，而不再包括菜单内的 review commit picker |
-| `path_picker_enter` | `picker_id`、`entry_name` 或 `field_name + selected option` | 进入当前 active picker 里的一个子目录；`/sendfile` 文件模式下通常来自目录下拉 |
+| `path_picker_enter` | `picker_id`、`entry_name` 或 `field_name + selected option` | 进入当前 active picker 里的一个子目录；`/sendfile` 文件模式下通常来自目录下拉；gateway 按 `payload value -> form_value[field_name] -> option -> options` 恢复目录项 |
 | `path_picker_up` | `picker_id` | 回到当前 active picker 的上一级目录 |
-| `path_picker_select` | `picker_id`、`entry_name` 或 `field_name + selected option` | 在当前 active picker 里选择一个文件或目录；`/sendfile` 文件模式下通常来自文件下拉，当前只更新待发送文件，不直接触发发送 |
+| `path_picker_select` | `picker_id`、`entry_name` 或 `field_name + selected option` | 在当前 active picker 里选择一个文件或目录；`/sendfile` 文件模式下通常来自文件下拉，当前只更新待发送文件，不直接触发发送；gateway 按 `payload value -> form_value[field_name] -> option -> options` 恢复文件项 |
 | `path_picker_page` | `picker_id`、`field_name`、`cursor` | path picker dropdown 的 byte-budget 翻页回调；`field_name` 区分目录 / 文件 lane，`cursor` 是候选项 start-index，不包含固定 `.` / `..`。目录翻页只更新可见候选页；文件翻页会保留当前目录，但显式清空文件选择并禁用 confirm，避免 invisible confirm |
 | `path_picker_confirm` | `picker_id` | 用当前 active picker 的已校验结果触发 consumer handoff；若 picker 带有 `owner_flow_id` 且命中 target picker owner card，consumer 可直接回填并 patch 原 owner card；独立 `/sendfile` picker 则会在 confirm 后保留自身 lifecycle，启动前失败继续 patch 当前卡，启动成功把当前卡封成 terminal |
 | `path_picker_cancel` | `picker_id` | 结束当前 active picker，并把取消结果交给 consumer 或默认 notice；target picker 子步骤当前会直接恢复原 owner card，而不是额外发一张取消卡 |
 | `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers`、`request_revision` | 响应 approval、`approval_command`、`approval_file_change`、`approval_network`、`request_user_input`、`permissions_request_approval`、`mcp_server_elicitation`。approval family 的按钮集合仍跟随上游 `availableDecisions` 归一化结果，包括 `cancel`；但卡面标题、正文、hint 与 MCP form/url、permissions grant 等 subtype 语义，当前都由 orchestrator 先写入 `FeishuRequestView.SemanticKind/HintText` 后再渲染。顶层 `tool/requestUserInput` 与 `item/tool/requestUserInput` 继续共用 `request_user_input` 提交流程；`permissions_request_approval` 通过按钮直接携带 scope 语义；`request_user_input` 与 form 模式 `mcp_server_elicitation` 会用这条 payload 承载纵向 direct-response 按钮与恢复态 `重新提交`；url 模式 `mcp_server_elicitation` 仍直接承载 continue/decline/cancel。对于真正的 pending request，服务端当前都会先把当前卡 inline replace 成 sealed `waiting_dispatch` 只读态，再下发真正的 request response 命令；当前 `/bendtomywill` 编辑卡也复用这条 payload family，但它不是 core `PendingRequest`：服务端会先按 `request_revision` 保存 patch 草稿、必要时 inline 刷到下一题；全部题目完成后不会下发 request response 命令，而是切到 daemon-side patch transaction progress page。`tool_callback` 当前不通过任何用户可点击的 `request_respond` 回调；卡片落地后会由服务端自动派发结构化 unsupported 响应 |
 | `request_control` | `request_id`、`request_type`、`request_control`、`question_id(可选)`、`request_revision` | 承载 request 的非回答型动作。当前 live 路径主要使用 `skip_optional`、`cancel_turn`、`cancel_request`：`skip_optional` 会把当前 optional 题标记为已跳过，并在必要时直接触发最终 dispatch；真实 pending request 上的 `cancel_turn` 会把 `request_user_input` 当前卡 seal 为终态后发 `turn.interrupt`；`cancel_request` 则用于 form 模式 `mcp_server_elicitation` 的请求级取消。当前 `/bendtomywill` 编辑卡同样复用这条 payload，但其 `cancel_turn/cancel_request` 只会把 patch 卡封成 `已取消`，不会向当前 thread 发送 interrupt |
-| `submit_request_form` | `request_id`、`request_type`、`request_revision`、`field_name(可选)` | 从表单里提取 `request_answers` 后回到 request 响应路径；当前用于顶层/`item` 两种 `request_user_input` 以及 form 模式 `mcp_server_elicitation`。表单只负责提交当前题，服务端会决定是“保存后自动跳到下一题”还是“当前题答完后直接 seal + dispatch” |
+| `submit_request_form` | `request_id`、`request_type`、`request_revision`、`field_name(可选)` | 从表单里提取 `request_answers` 后回到 request 响应路径；当前用于顶层/`item` 两种 `request_user_input`、form 模式 `mcp_server_elicitation`，以及 `plan_confirmation` 的 request-local structured permission panel。`multi_select_static` 当前会保留完整 `answers[]`，不再在 gateway helper 里压成首个值。表单只负责提交当前题或当前 panel，服务端会决定是“保存后自动跳到下一题”还是“当前题/当前 panel 答完后直接 seal + dispatch” |
 
 ### 4.3 当前表单提交规则
 
@@ -271,12 +271,14 @@
 - `submit_request_form`
   - 优先把 `form_value` 整体转成 `request_answers`
   - `request_user_input` 与 form 模式 `mcp_server_elicitation` 当前都只会为“需要手填”的字段渲染 form input（纯选项题不再渲染自由输入框）
+  - `plan_confirmation` 的 request-local structured panel 当前会直接把整个 `form_value` 回传；`multi_select_static` 的选中值会按 `answers[]` 全量保留
   - 当前不再额外携带 `request_option_id`
   - 对需要手填的 request / MCP 表单，`提交` 按钮当前也默认保持可点；缺字段、格式错误或 dispatch 前校验失败时，服务端会刷新同卡状态，而不是要求前端做实时禁用
   - 表单按钮文案当前统一为 `提交`
   - 这一步只提交当前题：
     - 若仍有未完成题，orchestrator 会保存草稿、递增 `request_revision`、把当前卡 inline replace 到下一题
     - 若当前题提交后已经凑齐完整答案，orchestrator 会先把当前卡 seal 成等待态，再派发最终 request response
+    - 对 `plan_confirmation`，若当前 panel 配置已经完整，orchestrator 会先把当前卡 seal 成“授权摘要 + waiting_dispatch”，再派发最终 request response
   - `request_user_input` 与 form 模式 `mcp_server_elicitation` 的 optional 字段当前都必须显式回答或显式 `skip_optional`；仅仅留空不会被视为已完成
   - 旧的“显式最终提交 / 留空确认提交 / 取消确认提交”按钮流当前已不再是 live UI 合同；服务端只保留旧 `request_respond(step_*)` 的兼容处理，不再由 projector 生成这些按钮
   - request 卡的按钮与表单提交都会携带 `request_revision`
@@ -290,10 +292,14 @@
 - `path_picker_enter` / `path_picker_select`
   - 旧按钮路径继续直接读取 `entry_name`
   - `select_static` 路径允许 payload 只带 `field_name`
-  - gateway 当前按 `action.option -> action.options[0] -> form_value[field_name]` 的顺序提取被选中的目录/文件条目
+  - gateway 当前按 `payload value -> form_value[field_name] -> action.option -> action.options[0]` 的顺序提取被选中的目录/文件条目
   - 这样 projector 可以把复用 path picker 统一收敛成紧凑下拉，而不必继续为每个条目单独渲染按钮；当前目录模式使用单目录下拉，文件模式使用目录/文件双下拉
   - 目录下拉当前会在 `CanGoUp=true` 时额外插入一个值为 `..` 的首项；这条值仍然走 `path_picker_enter`，最终由 orchestrator 复用现有 root-boundary 校验解析到父目录
   - 当前路径选择器卡片已不再额外渲染 `path_picker_up` 按钮；目录下拉里的 `..` 是默认“返回上一级”入口，因此卡面统一保持“目录浏览走目录下拉、文件选择走文件下拉（若有）、确认/取消走底部按钮”的结构
+- `target_picker_select_workspace` / `target_picker_select_session`
+  - 这两条 workspace/session lane 当前也复用 `internal/adapter/feishu/selectflow`，并与 path / thread / history 一起统一到 immediate callback recover contract
+  - gateway 当前按 `payload value -> form_value[field_name] -> action.option -> action.options[0]` 的顺序提取选中的 workspace / session
+  - 这样 `select_static` 在群聊里即使带回旧 option，也会以前端最新 `form_value` 为准，原卡才能稳定推进到下一步，而不会停在 silent no-op
 - `path_picker_page`
   - projector 当前把 path picker 目录/文件下拉的超长候选改成 byte-budget 分页，并用 `path_picker_page(picker_id + field_name + cursor)` 触发同卡翻页
   - `cursor` 表示候选项 start-index；目录 lane 固定项 `.` / `..` 会始终保留在当前页里，不参与 `cursor` 计算
@@ -336,7 +342,7 @@
 
 - request family 当前仍共用一套 pending request substrate，但卡面语义已收口到 orchestrator 的单点 presentation owner
   - `FeishuRequestView` 会显式携带 `SemanticKind`
-  - 当前 live approval subtype 至少包括 `approval_command`、`approval_file_change`、`approval_network`
+  - 当前 live approval subtype 至少包括 `approval_command`、`approval_file_change`、`approval_network`、`approval_can_use_tool`、`plan_confirmation`
 - `approval_command` / `approval_file_change` / `approval_network`
   - 不再只是“同一张 approval 卡换几段文案”；orchestrator 会先按 subtype 生成标题、正文 sections、按钮集合和 hint
   - 选项直接跟随上游 `availableDecisions` 归一化结果，当前至少覆盖 `accept`、`acceptForSession`、`decline`、`cancel`
@@ -345,6 +351,32 @@
   - `approval_network` 会把 `networkApprovalContext` 投影成主机/协议/端口等“网络目标”正文，并给出联网导向的 hint
   - 最终点击任一决策后，当前卡会先切到 sealed waiting 态，不再保留“看起来还能继续点”的旧按钮
   - 若同一 turn 后续又冒出新的 approval family request，这些新请求不会立刻 append 成并行可点击卡，而是继续排在当前 request 之后，等队头 resolved 后再顺序激活
+- `approval_can_use_tool`
+  - 当前默认显式暴露 `允许一次`、`拒绝`、`告诉 Claude 怎么改`
+  - 若当前 request metadata 里保留了非空 `permissionSuggestions`，还会额外暴露 `本会话允许`
+  - 正文会在通用命令确认信息之外补充 `工具`、`受限路径`、`建议权限` 等工具调用上下文
+  - `本会话允许` 会直接派发 same-request `acceptForSession`；Claude translator 会把当前 request 上观测到的 `permissionSuggestions` 原样回写成 native `updatedPermissions[]`
+  - 若当前 request 没有 `permissionSuggestions`，前台不应暴露 `本会话允许`；即便误收到这条决策，translator 也会 fail-closed，而不是退化成一次性 allow
+  - `captureFeedback` 会进入 request-specific capture；下一条文本会作为同一次 request 的 `{decision=decline, message=<feedback>}` 回写给 Claude，不会再额外生成普通 follow-up queue item
+  - hint 当前会显式区分“允许一次”与“本会话允许”的作用范围
+  - `decline` 与 `captureFeedback` 都只拒绝当前工具调用，不触发 `interruptOnDecline`
+- `plan_confirmation`
+  - 当前先渲染 quick-decision 四个选项：
+    - `允许一次并执行`
+    - `配置本会话授权`
+    - `拒绝`
+    - `告诉 Claude 怎么改`
+  - `配置本会话授权` 不会立刻 dispatch；它会把当前 request inline replace 成同一条 pending request 内的复杂权限面板
+  - 复杂权限面板当前是 request-local structured form：
+    - `grant_level` 走 `select_static`
+    - `directories` 与 `rule_classes` 走 `multi_select_static`
+    - 底部动作收口成 `按以上授权继续 / 返回 / 拒绝`
+  - panel submit 后，orchestrator 会先把当前 request 卡 seal 成摘要态，再派发 `{decision=accept, permissionSelection={scope=session, grant_level, directories[], rule_classes[]}}`
+  - `返回` 不会新开 owner page，只会 inline replace 回 quick-decision
+  - `revise` 不复用 approval family 的 `captureFeedback`；它会进入 plan-specific request-capture，下一条文本会作为 same-request guidance 回写给 Claude
+  - `revise` 提交后卡片会先切到 sealed waiting-dispatch 态，不会再额外生成普通 follow-up queue item
+  - hint 当前明确区分四条语义：允许一次并执行继续当前计划；配置本会话授权先打开细粒度授权面板；拒绝停止当前 turn；点击“告诉 Claude 怎么改”后可提交当前计划的修改意见
+  - `decline` 仍保持 `interruptOnDecline=true` 的既有合同
 
 MCP request 卡片当前新增的可视语义：
 

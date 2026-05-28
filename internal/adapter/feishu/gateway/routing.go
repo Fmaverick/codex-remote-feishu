@@ -426,18 +426,15 @@ func ParseCardActionTriggerEvent(env RoutingEnv, event *larkcallback.CardActionT
 		}, true
 	case cardActionKindPathPickerEnter, cardActionKindPathPickerSelect:
 		pickerID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyPickerID))
-		entryName := selectflow.RecoverCallbackValue(
-			value,
-			event.Event.Action,
-			strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyFieldName)),
-			cardActionPayloadKeyEntryName,
-		)
-		if pickerID == "" || entryName == "" {
-			return control.Action{}, false
-		}
+		flow := selectflow.PathPickerDirectoryFlow
 		actionKind := control.ActionPathPickerEnter
 		if actionPayloadKind(value) == cardActionKindPathPickerSelect {
+			flow = selectflow.PathPickerFileFlow
 			actionKind = control.ActionPathPickerSelect
+		}
+		entryName := flow.RecoverSelectedValue(value, event.Event.Action)
+		if pickerID == "" || entryName == "" {
+			return control.Action{}, false
 		}
 		return control.Action{
 			Kind:             actionKind,
@@ -518,7 +515,7 @@ func ParseCardActionTriggerEvent(env RoutingEnv, event *larkcallback.CardActionT
 		if pickerID == "" {
 			return control.Action{}, false
 		}
-		turnID := selectflow.RecoverCallbackValue(value, event.Event.Action, cardThreadHistoryTurnFieldName, cardActionPayloadKeyTurnID)
+		turnID := selectflow.HistoryTurnFlow.RecoverSelectedValue(value, event.Event.Action)
 		if turnID == "" {
 			return control.Action{}, false
 		}
@@ -572,25 +569,7 @@ func requestAnswersFromValue(values map[string]interface{}) map[string][]string 
 }
 
 func requestAnswersFromFormValue(values map[string]interface{}) map[string][]string {
-	if len(values) == 0 {
-		return nil
-	}
-	answers := map[string][]string{}
-	for key := range values {
-		name := strings.TrimSpace(key)
-		if name == "" {
-			continue
-		}
-		text := strings.TrimSpace(formStringValue(values, key))
-		if text == "" {
-			continue
-		}
-		answers[name] = []string{text}
-	}
-	if len(answers) == 0 {
-		return nil
-	}
-	return answers
+	return requestAnswersFromMap(values)
 }
 
 func targetPickerDraftAnswersFromFormValue(values map[string]interface{}) map[string][]string {

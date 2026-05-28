@@ -239,70 +239,6 @@ func (s *Service) handleResolvedRequestPrompt(surface *state.SurfaceConsoleRecor
 	return nil
 }
 
-func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRecord, action control.Action, text string) []eventcontract.Event {
-	capture := surface.ActiveRequestCapture
-	if requestCaptureExpired(s.now(), capture) {
-		clearSurfaceRequestCapture(surface)
-		return notice(surface, "request_capture_expired", "上一条确认反馈已过期，请重新点击卡片按钮后再发送处理意见。")
-	}
-	if capture == nil || capture.Mode != requestCaptureModeDeclineWithFeedback {
-		clearSurfaceRequestCapture(surface)
-		return notice(surface, "request_capture_expired", "当前反馈模式已失效，请重新处理确认卡片。")
-	}
-	request := surface.PendingRequests[capture.RequestID]
-	if request == nil {
-		clearSurfaceRequestCapture(surface)
-		return notice(surface, "request_expired", "这个确认请求已经结束或过期了。请重新发送消息。")
-	}
-	inst := s.root.Instances[request.InstanceID]
-	if inst == nil {
-		clearSurfaceRequestCapture(surface)
-		return notice(surface, "not_attached", s.attachedTargetUnavailableText(surface))
-	}
-
-	threadID := request.ThreadID
-	cwd := inst.WorkspaceRoot
-	routeMode := state.RouteModePinned
-	if thread := inst.Threads[threadID]; threadVisible(thread) && thread.CWD != "" {
-		cwd = thread.CWD
-	}
-	if threadID == "" {
-		var createThread bool
-		threadID, cwd, routeMode, createThread = freezeRoute(inst, surface)
-		_ = createThread
-	}
-
-	clearSurfaceRequestCapture(surface)
-	events := []eventcontract.Event{{
-		Kind:             eventcontract.KindAgentCommand,
-		SurfaceSessionID: surface.SurfaceSessionID,
-		Command: &agentproto.Command{
-			Kind: agentproto.CommandRequestRespond,
-			Origin: agentproto.Origin{
-				Surface:   surface.SurfaceSessionID,
-				UserID:    surface.ActorUserID,
-				ChatID:    surface.ChatID,
-				MessageID: action.MessageID,
-			},
-			Target: agentproto.Target{
-				ThreadID:               request.ThreadID,
-				TurnID:                 request.TurnID,
-				UseActiveTurnIfOmitted: request.TurnID == "",
-			},
-			Request: agentproto.Request{
-				RequestID: request.RequestID,
-				Response: map[string]any{
-					"type":     "approval",
-					"decision": "decline",
-				},
-			},
-		},
-	}}
-	events = append(events, notice(surface, "request_feedback_queued", "已记录处理意见。当前确认会先被拒绝，随后继续处理你的下一步要求。")...)
-	events = append(events, s.enqueueQueueItem(surface, action.MessageID, text, nil, []agentproto.Input{{Type: agentproto.InputText, Text: text}}, threadID, cwd, routeMode, surface.PromptOverride, true)...)
-	return events
-}
-
 func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, requestType string) (map[string]any, bool, []eventcontract.Event) {
 	requestAction := requestActionFromAction(action)
 	if requestAction == nil {
@@ -312,6 +248,9 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 	switch requestType {
 	case "approval":
 		optionID := control.NormalizeRequestOptionID(requestAction.RequestOptionID)
+		if response, complete, followup, handled := s.maybeHandlePlanConfirmationRequestAction(surface, request, action, optionID, requestAnswers); handled {
+			return response, complete, followup
+		}
 		if optionID == "" {
 			return nil, false, notice(surface, "request_invalid", "这个确认按钮缺少有效的处理选项。")
 		}
@@ -319,17 +258,36 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 			return nil, false, notice(surface, "request_invalid", "这个确认按钮对应的选项无效或当前不可用。")
 		}
 		if optionID == "captureFeedback" {
+			mode := requestCaptureModeDeclineWithFeedback
+			noticeText := "已进入反馈模式。接下来一条普通文本会作为对当前确认请求的处理意见，不会进入普通消息队列。"
+			if requestPromptSemanticKind(request) == control.RequestSemanticApprovalCanUseTool {
+				mode = requestCaptureModeSameRequestDecline
+				noticeText = "已进入反馈模式。接下来一条普通文本会作为对当前工具调用的处理意见，并直接回写给 Claude。"
+			}
 			surface.ActiveRequestCapture = &state.RequestCaptureRecord{
 				RequestID:   request.RequestID,
 				RequestType: request.RequestType,
 				InstanceID:  request.InstanceID,
 				ThreadID:    request.ThreadID,
 				TurnID:      request.TurnID,
-				Mode:        requestCaptureModeDeclineWithFeedback,
+				Mode:        mode,
 				CreatedAt:   s.now(),
 				ExpiresAt:   s.now().Add(10 * time.Minute),
 			}
-			return nil, false, notice(surface, "request_capture_started", "已进入反馈模式。接下来一条普通文本会作为对当前确认请求的处理意见，不会进入普通消息队列。")
+			return nil, false, notice(surface, "request_capture_started", noticeText)
+		}
+		if optionID == "revise" {
+			surface.ActiveRequestCapture = &state.RequestCaptureRecord{
+				RequestID:   request.RequestID,
+				RequestType: request.RequestType,
+				InstanceID:  request.InstanceID,
+				ThreadID:    request.ThreadID,
+				TurnID:      request.TurnID,
+				Mode:        requestCaptureModePlanReviseFeedback,
+				CreatedAt:   s.now(),
+				ExpiresAt:   s.now().Add(10 * time.Minute),
+			}
+			return nil, false, notice(surface, "request_capture_started", "已进入反馈模式。接下来一条普通文本会作为对当前计划的修改意见，并直接回写给 Claude。")
 		}
 		decision := decisionForRequestOption(optionID)
 		if decision == "" {
@@ -615,10 +573,12 @@ func (s *Service) requestPromptView(record *state.RequestPromptRecord, threadTit
 		Sections:              requestPromptSectionsToControl(record.Sections),
 		Options:               requestPromptOptionsToControl(record.Options),
 		Questions:             requestPromptQuestionsToControl(record.Questions, record.DraftAnswers, record.SkippedQuestionIDs),
+		StructuredForm:        requestPromptStructuredFormToControl(record.StructuredForm, record.StructuredDraftAnswers),
 		CurrentQuestionIndex:  normalizedRequestPromptCurrentQuestionIndex(record),
 		HintText:              strings.TrimSpace(record.HintText),
 		Phase:                 record.Phase,
 	}
+	view = planConfirmationRequestViewOverrides(record, view)
 	if requestLifecycleUsesWaitingDispatchPhase(record) {
 		view.Phase = frontstagecontract.PhaseWaitingDispatch
 		if strings.TrimSpace(view.StatusText) == "" {

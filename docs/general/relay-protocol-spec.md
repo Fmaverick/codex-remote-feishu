@@ -1,8 +1,8 @@
 # Relay Protocol Spec
 
 > Type: `general`
-> Updated: `2026-05-02`
-> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer`、Feishu reaction steering、daemon 驱动的 wrapper 退出命令、`thread/tokenUsage/updated` usage 事件、`turn.plan.updated + planSnapshot` 的结构化计划快照事件、`thread.history.read` 定向历史查询 command/event、`thread/status/changed` 到 `thread.runtime_status.updated` 的 authoritative thread runtime status 链路、`turn/diff/updated` 到 `turn.diff.updated` 的 authoritative turn-level aggregated diff 链路、`model/rerouted` 到 `turn.model_rerouted` 的 turn 级模型改路由语义、`threads.snapshot` / `thread.discovered` 上新增的结构化 `runtimeStatus` 投影、`contextCompaction` 到 compact notice 的标准化语义，以及新的 `thread.compact.start` 手动上下文整理 command。
+> Updated: `2026-05-26`
+> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer`、Feishu reaction steering、daemon 驱动的 wrapper 退出命令、`thread/tokenUsage/updated` usage 事件、`turn.plan.updated + planSnapshot` 的结构化计划快照事件、`thread.history.read` 定向历史查询 command/event、`thread/status/changed` 到 `thread.runtime_status.updated` 的 authoritative thread runtime status 链路、`turn/diff/updated` 到 `turn.diff.updated` 的 authoritative turn-level aggregated diff 链路、`model/rerouted` 到 `turn.model_rerouted` 的 turn 级模型改路由语义、`threads.snapshot` / `thread.discovered` 上新增的结构化 `runtimeStatus` 投影、`config.observed` 上新增的结构化 `observedPermission` 投影、`contextCompaction` 到 compact notice 的标准化语义，以及新的 `thread.compact.start` 手动上下文整理 command。
 
 ## 1. 文档定位
 
@@ -331,6 +331,7 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - `accept`
 - `acceptForSession`
 - `decline`
+- `revise`
 
 兼容规则：
 
@@ -341,9 +342,27 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 需要注意：
 
 - `captureFeedback` 是 Feishu 产品层 option，不是 native approval decision
-- 它会在 server 层翻译成：
-  - 对当前 request 发送 `decision=decline`
-  - 再把用户下一条文字作为 follow-up prompt 入队
+- 当前只对仍显式暴露该入口的 approval request 渲染；`plan_confirmation` 不再注入这条入口
+- `acceptForSession` 当前按 semantic kind 分成两条 server-side 翻译：
+  - `approval_can_use_tool`
+    - 直接派发 same-request allow
+    - Claude translator 会把观测到的 `permissionSuggestions` 原样回写成 native `updatedPermissions[]`
+    - 若当前 request 没有 `permissionSuggestions`，前台不应暴露这条入口；即便误收到 `acceptForSession`，translator 也会 fail-closed，而不是退化成一次性 allow
+  - `plan_confirmation`
+    - 不直接派发 allow，而是进入 request-local structured permission panel
+- 当前 `captureFeedback` 会按 semantic kind 分成两条 server-side 翻译：
+  - generic approval：对当前 request 发送 `decision=decline`，再把用户下一条文字作为 follow-up prompt 入队
+  - `approval_can_use_tool`：进入 request-capture 后，把用户下一条文字直接回写成同一次 request 的 `{decision=decline, message=<feedback>}`，不会额外生成 follow-up queue item，也不会触发 interrupt
+- `revise` 当前只用于 `plan_confirmation`
+  - server 会把它翻译成同一次 request 内的 deny-with-guidance
+  - 不会额外触发 interrupt
+  - 也不会把用户文本再排成普通 follow-up queue item
+- `plan_confirmation` 当前还会把 quick-decision 显式收口成四个产品动作：
+  - `accept`
+  - `acceptForSession`
+  - `decline`
+  - `revise`
+  - 其中 `acceptForSession` 不再直接代表“立刻持续授权”，而是进入同一条 pending request 内的复杂权限面板
 
 ### 4.6 `threads.refresh`
 
@@ -497,7 +516,37 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - thread 级当前有效模型会同步切到 `toModel`，这样现有 snapshot / prompt / status 展示不会继续误报 reroute 前模型
 - 当前仍不额外生成 Feishu 强提示；用户可见层先保持安静，后续是否展示、展示到哪里再单独讨论
 
-### 5.5 关键字段
+### 5.5 `config.observed`
+
+这是 runtime 当前观察到的 thread-level 配置快照事件。
+
+关键字段：
+
+- `threadId`
+- `cwd`
+- `model`
+- `accessMode`
+- `planMode`
+- `observedPermission`
+  - `nativeMode`
+  - `projectedAccessMode`
+  - `projectedPlanMode`
+  - `projectionKind`
+
+当前语义：
+
+- `observedPermission` 是 Claude observed permission truth 的新 canonical carrier。
+- `accessMode / planMode` 仍保留为兼容派生值，不再是 observed truth source。
+- 当 native mode 能被本地精确映射时：
+  - `projectionKind=exact`
+  - `accessMode / planMode` 与 `projectedAccessMode / projectedPlanMode` 同步可用
+- 当 native mode 当前没有本地精确 coarse projection（例如 `dontAsk` / `auto`）时：
+  - `projectionKind=unmapped`
+  - `observedPermission.nativeMode` 保留真实 raw mode
+  - `accessMode / planMode` 不得再伪装成错误的 coarse 结论
+- 当前 `mcp_server_elicitation` 不走这条 observed permission 链；Claude runtime 发起的 `can_use_tool` 类 MCP tool approval 才与这套 observed truth 同族。
+
+### 5.6 关键字段
 
 #### `initiator`
 
@@ -600,7 +649,11 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 当前 server 只在产品层对 approval request 做额外补全：
 
 - 若 upstream 未显式给出 option，但请求种类可确认支持 session 级放行，则补出 `acceptForSession`
+  - `approval_command` / `approval_file_change` / `approval_network` 当前可直接补出
+  - `approval_can_use_tool` 只有在 request metadata 里保留了非空 `permissionSuggestions` 时才补出
+- `plan_confirmation` 额外补出 `revise`
 - `captureFeedback` 只存在于 Feishu `request.prompt` 渲染层，不回写到 canonical event
+  - 当前 `plan_confirmation` 已显式排除这条入口，改为显式暴露 `revise`
 
 ### 5.7 Helper/Internal traffic 规则
 
@@ -689,7 +742,30 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 
 - upstream 原生透传的 approval option
 - server 合成的 `acceptForSession`
+- server 合成的 `revise`
 - Feishu 专用的 `captureFeedback`
+
+其中当前 `approval_can_use_tool` 默认会渲染 accept / decline / captureFeedback；若当前 request metadata 里保留了原始 `permissionSuggestions`，还会额外渲染 `acceptForSession`：
+
+- `acceptForSession` 会直接派发 canonical request response；Claude translator 会把同一条 request 上观测到的 `permissionSuggestions` 原样回写成 native `updatedPermissions[]`
+- 若当前 request 没有 `permissionSuggestions`，前台不会暴露 `acceptForSession`；即便误收到这条决策，translator 也会 fail-closed，而不是退化成一次性 allow
+- `captureFeedback` 会进入 request-capture，并在下一条文本到达时回写 `{decision=decline, message=<feedback>}` 到当前 request
+- 这条 same-request feedback 不会再额外排成普通 follow-up queue item，也不会设置 `interrupt=true`
+
+其中当前 `plan_confirmation` 会渲染 accept / acceptForSession / decline / revise：
+
+- `acceptForSession` 不会直接派发 canonical request response，而是先把同一张 pending request 卡 inline replace 成 request-local structured permission panel
+- 该 panel 当前至少收口三块结构化字段：
+  - `grant_level`
+  - `directories`
+  - `rule_classes`
+- panel 提交后，server 会先把当前 request seal 成摘要态，再派发 `{decision=accept, permissionSelection={scope=session, grant_level, directories[], rule_classes[]}}`
+- Claude translator 当前会把这块 `permissionSelection` 单点编译成 native `updatedPermissions[]`：
+  - 所有 native updates 都固定 `destination=session`
+  - 默认优先编译成 additive `addRules` / `addDirectories`
+  - 只有在 `grant_level=session_file_edits_and_fs_ops` 且目录范围等于整个当前工作区、规则范围覆盖 edit/create/rename/delete/common fs ops 全套时，才允许收口成极窄 `setMode(acceptEdits)`
+  - 若用户选了子目录范围下无法安全等价的 aggressive fs-op 规则类，translator 会 fail-closed 为更窄的 path-scoped file rules，并把其余 fs ops 保留为后续按需 prompt
+- `revise` 会进入 request-capture，再把下一条文本作为 same-request deny-with-guidance 回写给 Claude，而不是复用 `captureFeedback` 的“拒绝 + follow-up 入队”语义。
 
 `pending.input.state` 当前除 queue/typing/discard 外，还会投影：
 

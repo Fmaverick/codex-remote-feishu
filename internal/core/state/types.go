@@ -216,6 +216,7 @@ type ThreadRecord struct {
 	RuntimeStatus           *agentproto.ThreadRuntimeStatus
 	ExplicitModel           string
 	ExplicitReasoningEffort string
+	ObservedPermission      *agentproto.ObservedPermissionState
 	ObservedAccessMode      string
 	ObservedPlanMode        PlanModeSetting
 	LastModelReroute        *agentproto.TurnModelReroute
@@ -557,6 +558,34 @@ type RequestPromptQuestionRecord struct {
 	DirectResponse bool
 }
 
+type RequestPromptFormFieldKind string
+
+const (
+	RequestPromptFormFieldText              RequestPromptFormFieldKind = "text"
+	RequestPromptFormFieldSelectStatic      RequestPromptFormFieldKind = "select_static"
+	RequestPromptFormFieldMultiSelectStatic RequestPromptFormFieldKind = "multi_select_static"
+)
+
+type RequestPromptFormFieldOptionRecord struct {
+	Label string
+	Value string
+}
+
+type RequestPromptFormFieldRecord struct {
+	Name          string
+	Kind          RequestPromptFormFieldKind
+	Label         string
+	Placeholder   string
+	DefaultValue  string
+	DefaultValues []string
+	Options       []RequestPromptFormFieldOptionRecord
+}
+
+type RequestPromptStructuredFormRecord struct {
+	SubmitLabel string
+	Fields      []RequestPromptFormFieldRecord
+}
+
 type RequestPromptTextSectionRecord struct {
 	Label string
 	Lines []string
@@ -604,11 +633,13 @@ type RequestPromptRecord struct {
 	Sections                 []RequestPromptTextSectionRecord
 	Options                  []RequestPromptOptionRecord
 	Questions                []RequestPromptQuestionRecord
+	StructuredForm           *RequestPromptStructuredFormRecord
 	CurrentQuestionIndex     int
 	HintText                 string
 	LocalKind                string
 	LocalMeta                map[string]string
 	DraftAnswers             map[string]string
+	StructuredDraftAnswers   map[string][]string
 	SkippedQuestionIDs       map[string]bool
 	CardRevision             int
 	Phase                    frontstagecontract.Phase

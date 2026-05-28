@@ -560,7 +560,8 @@ func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, rec
 	selectedSessionLabel, selectedSessionMeta := targetPickerSelectedSessionSummary(sessionOptions, selectedSession)
 	localDirectoryPath := strings.TrimSpace(record.LocalDirectoryPath)
 	localDirectoryName := strings.TrimSpace(record.LocalDirectoryName)
-	localDirectoryFinalPath := strings.TrimSpace(record.LocalDirectoryFinalPath)
+	localDirectoryFinalPath := ""
+	localDirectoryChecked := false
 	gitParentDir := strings.TrimSpace(record.GitParentDir)
 	gitRepoURL := strings.TrimSpace(record.GitRepoURL)
 	gitDirectoryName := strings.TrimSpace(record.GitDirectoryName)
@@ -606,7 +607,8 @@ func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, rec
 		if strings.TrimSpace(localState.ResolvedPath) != "" {
 			localDirectoryPath = strings.TrimSpace(localState.ResolvedPath)
 		}
-		localDirectoryFinalPath = strings.TrimSpace(firstNonEmpty(record.LocalDirectoryFinalPath, localState.FinalPath))
+		localDirectoryFinalPath = strings.TrimSpace(localState.FinalPath)
+		localDirectoryChecked = localState.Checked
 		sourceMessages = append(sourceMessages, localState.Messages...)
 		canConfirm = localState.CanConfirm
 		confirmValidatesOnSubmit = true
@@ -713,7 +715,7 @@ func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, rec
 		LocalDirectoryPath:       localDirectoryPath,
 		LocalDirectoryName:       localDirectoryName,
 		LocalDirectoryFinalPath:  localDirectoryFinalPath,
-		LocalDirectoryChecked:    record.LocalDirectoryChecked,
+		LocalDirectoryChecked:    localDirectoryChecked,
 		GitParentDir:             gitParentDir,
 		GitRepoURL:               gitRepoURL,
 		GitDirectoryName:         gitDirectoryName,

@@ -21,7 +21,7 @@ func TestRecoverCallbackValuePrefersExplicitPayloadValue(t *testing.T) {
 	}
 }
 
-func TestRecoverCallbackValueUsesSelectedOptionBeforeFormValue(t *testing.T) {
+func TestRecoverCallbackValueUsesFormValueBeforeSelectedOption(t *testing.T) {
 	action := &larkcallback.CallBackAction{
 		Option: "thread-from-option",
 		FormValue: map[string]interface{}{
@@ -29,8 +29,73 @@ func TestRecoverCallbackValueUsesSelectedOptionBeforeFormValue(t *testing.T) {
 		},
 	}
 	got := RecoverCallbackValue(nil, action, "selection_thread", "")
-	if got != "thread-from-option" {
-		t.Fatalf("RecoverCallbackValue() = %q, want option value", got)
+	if got != "thread-from-form" {
+		t.Fatalf("RecoverCallbackValue() = %q, want form value", got)
+	}
+}
+
+func TestTargetPickerWorkspaceFlowPrefersFormValueOverSelectedOption(t *testing.T) {
+	action := &larkcallback.CallBackAction{
+		Option: "workspace-from-option",
+		FormValue: map[string]interface{}{
+			"target_picker_workspace": []interface{}{"workspace-from-form"},
+		},
+	}
+	got := TargetPickerWorkspaceFlow.RecoverSelectedValue(nil, action)
+	if got != "workspace-from-form" {
+		t.Fatalf("TargetPickerWorkspaceFlow.RecoverSelectedValue() = %q, want form value", got)
+	}
+}
+
+func TestTargetPickerSessionFlowPrefersFormValueOverSelectedOption(t *testing.T) {
+	action := &larkcallback.CallBackAction{
+		Option: "thread:from-option",
+		FormValue: map[string]interface{}{
+			"target_picker_session": []interface{}{"thread:from-form"},
+		},
+	}
+	got := TargetPickerSessionFlow.RecoverSelectedValue(nil, action)
+	if got != "thread:from-form" {
+		t.Fatalf("TargetPickerSessionFlow.RecoverSelectedValue() = %q, want form value", got)
+	}
+}
+
+func TestThreadSelectionFlowPrefersFormValueOverSelectedOption(t *testing.T) {
+	action := &larkcallback.CallBackAction{
+		Option: "thread-from-option",
+		FormValue: map[string]interface{}{
+			"selection_thread": []interface{}{"thread-from-form"},
+		},
+	}
+	got := ThreadSelectionFlow.RecoverSelectedValue(nil, action)
+	if got != "thread-from-form" {
+		t.Fatalf("ThreadSelectionFlow.RecoverSelectedValue() = %q, want form value", got)
+	}
+}
+
+func TestPathPickerDirectoryFlowPrefersFormValueOverSelectedOption(t *testing.T) {
+	action := &larkcallback.CallBackAction{
+		Option: "dir-from-option",
+		FormValue: map[string]interface{}{
+			"path_picker_directory": []interface{}{"dir-from-form"},
+		},
+	}
+	got := PathPickerDirectoryFlow.RecoverSelectedValue(nil, action)
+	if got != "dir-from-form" {
+		t.Fatalf("PathPickerDirectoryFlow.RecoverSelectedValue() = %q, want form value", got)
+	}
+}
+
+func TestPathPickerFileFlowPrefersFormValueOverSelectedOption(t *testing.T) {
+	action := &larkcallback.CallBackAction{
+		Option: "file-from-option.txt",
+		FormValue: map[string]interface{}{
+			"path_picker_file": []interface{}{"file-from-form.txt"},
+		},
+	}
+	got := PathPickerFileFlow.RecoverSelectedValue(nil, action)
+	if got != "file-from-form.txt" {
+		t.Fatalf("PathPickerFileFlow.RecoverSelectedValue() = %q, want form value", got)
 	}
 }
 
@@ -56,6 +121,7 @@ func TestFlowDefinitionsUseSharedPaginationHint(t *testing.T) {
 		TargetPickerWorkspaceFlow,
 		TargetPickerSessionFlow,
 		ThreadSelectionFlow,
+		HistoryTurnFlow,
 	}
 	for _, def := range defs {
 		if def.PaginationHint != DefaultPaginationHint {

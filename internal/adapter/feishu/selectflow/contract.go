@@ -41,6 +41,11 @@ var (
 		PayloadValueKey: frontstagecontract.CardActionPayloadKeyThreadID,
 		PaginationHint:  DefaultPaginationHint,
 	}
+	HistoryTurnFlow = PaginatedSelectFlowDefinition{
+		FieldName:       frontstagecontract.CardThreadHistoryTurnFieldName,
+		PayloadValueKey: frontstagecontract.CardActionPayloadKeyTurnID,
+		PaginationHint:  DefaultPaginationHint,
+	}
 )
 
 func (d PaginatedSelectFlowDefinition) ResolvedFieldName(payload map[string]any) string {
@@ -58,17 +63,19 @@ func RecoverCallbackValue(payload map[string]any, action *larkcallback.CallBackA
 	if value := payloadStringValue(payload, payloadValueKey); value != "" {
 		return value
 	}
-	if value := SelectedOptionValue(action); value != "" {
-		return value
-	}
 	fieldName := strings.TrimSpace(defaultFieldName)
 	if payloadFieldName := payloadStringValue(payload, frontstagecontract.CardActionPayloadKeyFieldName); payloadFieldName != "" {
 		fieldName = payloadFieldName
 	}
-	if fieldName == "" || action == nil {
-		return ""
+	if fieldName != "" && action != nil {
+		if value := FormValue(action.FormValue, fieldName); value != "" {
+			return value
+		}
 	}
-	return FormValue(action.FormValue, fieldName)
+	if value := SelectedOptionValue(action); value != "" {
+		return value
+	}
+	return ""
 }
 
 func SelectedOptionValue(action *larkcallback.CallBackAction) string {

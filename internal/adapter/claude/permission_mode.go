@@ -1,14 +1,14 @@
 package claude
 
 import (
-	"strings"
-
+	"github.com/kxn/codex-remote-feishu/internal/claudesessionstore"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 const (
 	claudePermissionModeDefault           = "default"
+	claudePermissionModeAcceptEdits       = "acceptEdits"
 	claudePermissionModePlan              = "plan"
 	claudePermissionModeBypassPermissions = "bypassPermissions"
 )
@@ -28,6 +28,12 @@ func claudePermissionSelectionFromOverrides(accessMode, planMode string) claudeP
 		}
 	}
 	switch agentproto.NormalizeAccessMode(accessMode) {
+	case agentproto.AccessModeAcceptEdits:
+		return claudePermissionSelection{
+			NativeMode: claudePermissionModeAcceptEdits,
+			AccessMode: agentproto.AccessModeAcceptEdits,
+			PlanMode:   string(state.PlanModeSettingOff),
+		}
 	case agentproto.AccessModeFullAccess:
 		return claudePermissionSelection{
 			NativeMode: claudePermissionModeBypassPermissions,
@@ -44,23 +50,10 @@ func claudePermissionSelectionFromOverrides(accessMode, planMode string) claudeP
 }
 
 func claudePermissionSelectionFromNative(mode string) claudePermissionSelection {
-	switch strings.TrimSpace(mode) {
-	case claudePermissionModePlan:
-		return claudePermissionSelection{
-			NativeMode: claudePermissionModePlan,
-			PlanMode:   string(state.PlanModeSettingOn),
-		}
-	case claudePermissionModeBypassPermissions:
-		return claudePermissionSelection{
-			NativeMode: claudePermissionModeBypassPermissions,
-			AccessMode: agentproto.AccessModeFullAccess,
-			PlanMode:   string(state.PlanModeSettingOff),
-		}
-	default:
-		return claudePermissionSelection{
-			NativeMode: firstNonEmptyString(strings.TrimSpace(mode), claudePermissionModeDefault),
-			AccessMode: agentproto.AccessModeConfirm,
-			PlanMode:   string(state.PlanModeSettingOff),
-		}
+	observed := claudesessionstore.CompileObservedPermissionStateFromClaudeNative(mode)
+	return claudePermissionSelection{
+		NativeMode: firstNonEmptyString(observed.NativeMode, claudePermissionModeDefault),
+		AccessMode: agentproto.NormalizeAccessMode(observed.ProjectedAccessMode),
+		PlanMode:   observed.ProjectedPlanMode,
 	}
 }

@@ -66,6 +66,11 @@ type activeOwnerCardFlowRecord struct {
 	ExpiresAt       time.Time
 }
 
+type targetPickerLocalDirectoryValidatedRecord struct {
+	DraftKey  string
+	FinalPath string
+}
+
 type activeTargetPickerRecord struct {
 	PickerID                string
 	OwnerUserID             string
@@ -92,8 +97,7 @@ type activeTargetPickerRecord struct {
 	SelectedSessionValue    string
 	LocalDirectoryPath      string
 	LocalDirectoryName      string
-	LocalDirectoryFinalPath string
-	LocalDirectoryChecked   bool
+	LocalDirectoryValidated *targetPickerLocalDirectoryValidatedRecord
 	GitParentDir            string
 	GitRepoURL              string
 	GitDirectoryName        string

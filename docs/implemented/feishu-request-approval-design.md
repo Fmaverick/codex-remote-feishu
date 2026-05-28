@@ -1,7 +1,7 @@
 # Feishu 确认请求增强设计
 
 > Type: `implemented`
-> Updated: `2026-04-06`
+> Updated: `2026-05-26`
 > Summary: 标记为已实现文档并迁移到 `docs/implemented`，同步修正对 canonical 文档的引用。
 
 ## 1. 文档定位
@@ -14,6 +14,13 @@
 - [relay-protocol-spec.md](../general/relay-protocol-spec.md)
 
 为准。
+
+补充说明：
+
+- 本文里多数早期 `captureFeedback -> decline + follow-up` 的描述，当前只对 generic approval 仍然成立。
+- Claude `approval_can_use_tool` 已改成同一次 request 内的 `{decision=decline, message=<feedback>}` 回写，不再额外生成 follow-up queue item。
+- `plan_confirmation` 也不再复用 generic `captureFeedback`，而是走 `revise` 的 same-request guidance 路径。
+- 若本文与 canonical 文档冲突，以 canonical 文档为准。
 
 ## 2. 背景
 
@@ -157,22 +164,20 @@ approval request 通常挂在当前 turn 上。
 
 `本会话允许` 不应盲目硬编码为所有 approval 都有。
 
-原因是目前 wrapper 已确认能观测到的 request started 原始 payload，至少在现有测试覆盖里，还只有：
+当前已确认的 Claude `approval_can_use_tool` 实现口径是：
 
-- `acceptLabel`
-- `declineLabel`
-- `title`
-- `message`
-- `command`
-
-尚未确认 native `serverRequest/started` 是否一定会把本地支持的全部 approval options 原样暴露出来。
+- native `control_request(can_use_tool)` 会在可做 session grant 时携带 `permission_suggestions`
+- 这些 `permission_suggestions` 本身就是 native `PermissionUpdate[]`
+- 本地 “don’t ask again / always allow” 路径不会重新发明 schema，而是直接把这组 suggestions 原样回写到 allow response 的 `updatedPermissions`
 
 因此产品设计应允许三种情况：
 
 1. 上游明确给出 `acceptForSession`
    - Feishu 展示 `本会话允许`
-2. 上游没有显式给出，但我们已经基于真实样本确认该 request kind 恒支持 `acceptForSession`
-   - Feishu 可合成展示
+2. 上游没有显式给出，但当前 request metadata 已保留原始 `permissionSuggestions`
+   - Feishu 可合成展示 `本会话允许`
+   - 点击后应派发 same-request `acceptForSession`
+   - Claude translator 必须把观测到的 `permissionSuggestions` 原样翻成 native `updatedPermissions`
 3. 上游未知
    - Feishu 隐藏该按钮，退化为：
      - `允许一次`

@@ -271,10 +271,16 @@ func requestPromptTitle(current, fallback string, genericTitles ...string) strin
 
 func approvalRequestHintText(backend agentproto.Backend, semanticKind string, options []state.RequestPromptOptionRecord) string {
 	captureFeedback := false
+	sessionGrant := false
+	sameRequestRevise := false
 	for _, option := range options {
-		if control.NormalizeRequestOptionID(option.OptionID) == "captureFeedback" {
+		switch control.NormalizeRequestOptionID(option.OptionID) {
+		case "acceptForSession":
+			sessionGrant = true
+		case "captureFeedback":
 			captureFeedback = true
-			break
+		case "revise":
+			sameRequestRevise = true
 		}
 	}
 	switch semanticKind {
@@ -295,14 +301,20 @@ func approvalRequestHintText(backend agentproto.Backend, semanticKind string, op
 		return "请确认这次网络访问是否可以继续。"
 	case control.RequestSemanticApprovalCanUseTool:
 		if captureFeedback {
+			if sessionGrant {
+				return "允许一次只会放行这次工具调用；本会话允许会按 Claude 给出的权限建议继续；如果工具调用范围或权限建议不符合预期，请点击“" + requestFeedbackActionLabel(backend) + "”；如果不允许本次工具调用，直接拒绝即可。"
+			}
 			return "如果工具调用范围或权限建议不符合预期，请点击“" + requestFeedbackActionLabel(backend) + "”；如果不允许本次工具调用，直接拒绝即可。"
+		}
+		if sessionGrant {
+			return "允许一次只会放行这次工具调用；本会话允许会按 Claude 给出的权限建议继续；拒绝只会拒绝这次工具调用。"
 		}
 		return "允许后会继续当前工具调用；拒绝只会拒绝这次工具调用。"
 	case control.RequestSemanticPlanConfirmation:
-		if captureFeedback {
-			return "批准会继续执行当前计划；拒绝会停止当前 turn。如需修改计划，请点击“" + requestFeedbackActionLabel(backend) + "”。"
+		if sameRequestRevise {
+			return "允许一次并执行会继续当前计划；配置本会话授权会先打开细粒度授权面板；拒绝会停止当前 turn；如需修改计划，请点击“" + requestFeedbackActionLabel(backend) + "”后再发送下一条文字。"
 		}
-		return "批准会继续执行当前计划；拒绝会停止当前 turn。"
+		return "允许一次并执行会继续当前计划；配置本会话授权会先打开细粒度授权面板；拒绝会停止当前 turn。"
 	default:
 		if captureFeedback {
 			return "如果想拒绝并补充处理意见，请点击“" + requestFeedbackActionLabel(backend) + "”后再发送下一条文字。"

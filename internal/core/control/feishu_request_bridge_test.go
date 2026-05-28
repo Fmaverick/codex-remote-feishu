@@ -30,6 +30,9 @@ func TestRequestBridgeShouldInterruptOnDecline(t *testing.T) {
 	if !RequestBridgeShouldInterruptOnDecline(contract, map[string]any{"decision": "decline"}) {
 		t.Fatal("expected plan decline to request interrupt")
 	}
+	if RequestBridgeShouldInterruptOnDecline(contract, map[string]any{"decision": "revise"}) {
+		t.Fatal("did not expect plan revise to request interrupt")
+	}
 	if RequestBridgeShouldInterruptOnDecline(contract, map[string]any{"decision": "accept"}) {
 		t.Fatal("did not expect accept to request interrupt")
 	}

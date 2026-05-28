@@ -23,6 +23,7 @@ type targetPickerAddWorkspacePathPickerConsumer struct{}
 
 type targetPickerLocalDirectoryState struct {
 	ResolvedPath string
+	DraftKey     string
 	FinalPath    string
 	Checked      bool
 	CanConfirm   bool
@@ -36,14 +37,60 @@ type targetPickerGitImportState struct {
 	Messages   []control.FeishuTargetPickerMessage
 }
 
+func targetPickerLocalDirectoryDraftKey(resolvedPath, directoryName string) string {
+	resolvedPath = normalizeWorkspaceClaimKey(resolvedPath)
+	directoryName = strings.TrimSpace(directoryName)
+	if resolvedPath == "" {
+		return ""
+	}
+	return resolvedPath + "\x00" + directoryName
+}
+
+func clearTargetPickerLocalDirectoryValidation(record *activeTargetPickerRecord) {
+	if record == nil {
+		return
+	}
+	record.LocalDirectoryValidated = nil
+}
+
+func setTargetPickerLocalDirectoryValidation(record *activeTargetPickerRecord, draftKey, finalPath string) {
+	if record == nil {
+		return
+	}
+	draftKey = strings.TrimSpace(draftKey)
+	finalPath = strings.TrimSpace(finalPath)
+	if draftKey == "" || finalPath == "" {
+		record.LocalDirectoryValidated = nil
+		return
+	}
+	record.LocalDirectoryValidated = &targetPickerLocalDirectoryValidatedRecord{
+		DraftKey:  draftKey,
+		FinalPath: finalPath,
+	}
+}
+
+func targetPickerLocalDirectoryValidationMatches(record *activeTargetPickerRecord, draftKey, finalPath string) bool {
+	if record == nil || record.LocalDirectoryValidated == nil {
+		return false
+	}
+	validated := record.LocalDirectoryValidated
+	if strings.TrimSpace(validated.DraftKey) == "" || strings.TrimSpace(validated.FinalPath) == "" {
+		return false
+	}
+	return strings.TrimSpace(validated.DraftKey) == strings.TrimSpace(draftKey) &&
+		normalizeWorkspaceClaimKey(validated.FinalPath) == normalizeWorkspaceClaimKey(finalPath)
+}
+
 func (s *Service) applyTargetPickerDraftAnswers(record *activeTargetPickerRecord, answers map[string][]string) {
 	if record == nil || len(answers) == 0 {
 		return
 	}
 	if value, ok := targetPickerAnswerValue(answers, control.FeishuTargetPickerLocalDirectoryNameFieldName); ok {
-		record.LocalDirectoryName = strings.TrimSpace(value)
-		record.LocalDirectoryChecked = false
-		record.LocalDirectoryFinalPath = ""
+		value = strings.TrimSpace(value)
+		if strings.TrimSpace(record.LocalDirectoryName) != value {
+			record.LocalDirectoryName = value
+			clearTargetPickerLocalDirectoryValidation(record)
+		}
 	}
 	if value, ok := targetPickerAnswerValue(answers, control.FeishuTargetPickerGitRepoURLFieldName); ok {
 		record.GitRepoURL = strings.TrimSpace(value)
@@ -148,8 +195,7 @@ func (targetPickerAddWorkspacePathPickerConsumer) PathPickerConfirmed(s *Service
 	switch strings.TrimSpace(result.ConsumerMeta[targetPickerAddWorkspaceMetaFieldKind]) {
 	case control.FeishuTargetPickerPathFieldLocalDirectory:
 		record.LocalDirectoryPath = selectedPath
-		record.LocalDirectoryChecked = false
-		record.LocalDirectoryFinalPath = ""
+		clearTargetPickerLocalDirectoryValidation(record)
 	case control.FeishuTargetPickerPathFieldGitParentDir:
 		record.GitParentDir = selectedPath
 	default:
@@ -244,10 +290,9 @@ func (s *Service) buildTargetPickerLocalDirectoryState(surface *state.SurfaceCon
 		}
 		finalPath = state.NormalizeWorkspaceKey(filepath.Join(resolvedPath, directoryName))
 	}
+	localState.DraftKey = targetPickerLocalDirectoryDraftKey(resolvedPath, directoryName)
 	localState.FinalPath = finalPath
-	localState.Checked = strings.TrimSpace(record.LocalDirectoryFinalPath) != "" &&
-		normalizeWorkspaceClaimKey(record.LocalDirectoryFinalPath) == normalizeWorkspaceClaimKey(finalPath) &&
-		record.LocalDirectoryChecked
+	localState.Checked = targetPickerLocalDirectoryValidationMatches(record, localState.DraftKey, finalPath)
 	info, statErr := os.Stat(resolvedPath)
 	switch {
 	case statErr != nil:
@@ -321,18 +366,15 @@ func (s *Service) buildTargetPickerLocalDirectoryState(surface *state.SurfaceCon
 	return localState
 }
 
-func (s *Service) evaluateCheckedTargetPickerLocalDirectoryState(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord, finalPath string) targetPickerLocalDirectoryState {
+func (s *Service) evaluateCheckedTargetPickerLocalDirectoryState(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord, localState targetPickerLocalDirectoryState) targetPickerLocalDirectoryState {
 	if record == nil {
 		return targetPickerLocalDirectoryState{}
 	}
-	previousChecked := record.LocalDirectoryChecked
-	previousFinalPath := record.LocalDirectoryFinalPath
-	record.LocalDirectoryChecked = true
-	record.LocalDirectoryFinalPath = strings.TrimSpace(finalPath)
-	localState := s.buildTargetPickerLocalDirectoryState(surface, record)
-	record.LocalDirectoryChecked = previousChecked
-	record.LocalDirectoryFinalPath = previousFinalPath
-	return localState
+	previousValidated := record.LocalDirectoryValidated
+	setTargetPickerLocalDirectoryValidation(record, localState.DraftKey, localState.FinalPath)
+	checkedState := s.buildTargetPickerLocalDirectoryState(surface, record)
+	record.LocalDirectoryValidated = previousValidated
+	return checkedState
 }
 
 func (s *Service) targetPickerDirectoryIsKnownWorkspace(surface *state.SurfaceConsoleRecord, workspaceKey string) bool {
@@ -458,11 +500,9 @@ func (s *Service) confirmTargetPickerLocalDirectory(surface *state.SurfaceConsol
 	}
 	localState := s.buildTargetPickerLocalDirectoryState(surface, record)
 	if !localState.Checked {
-		checkedState := s.evaluateCheckedTargetPickerLocalDirectoryState(surface, record, localState.FinalPath)
-		record.LocalDirectoryFinalPath = strings.TrimSpace(checkedState.FinalPath)
-		record.LocalDirectoryChecked = checkedState.CanConfirm
+		checkedState := s.evaluateCheckedTargetPickerLocalDirectoryState(surface, record, localState)
 		if !checkedState.CanConfirm || strings.TrimSpace(checkedState.FinalPath) == "" {
-			record.LocalDirectoryChecked = false
+			clearTargetPickerLocalDirectoryValidation(record)
 			message := targetPickerFirstBlockingMessage(localState.Messages)
 			if message == "" {
 				message = targetPickerFirstBlockingMessage(checkedState.Messages)
@@ -475,6 +515,7 @@ func (s *Service) confirmTargetPickerLocalDirectory(surface *state.SurfaceConsol
 				Text:  message,
 			})
 		} else {
+			setTargetPickerLocalDirectoryValidation(record, checkedState.DraftKey, checkedState.FinalPath)
 			resetTargetPickerEditingState(record)
 		}
 		updatedView, err := s.buildTargetPickerView(surface, record)

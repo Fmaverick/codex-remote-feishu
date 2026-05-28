@@ -91,6 +91,9 @@ func normalizeRequestPromptRecord(record *state.RequestPromptRecord) {
 	if record.DraftAnswers == nil {
 		record.DraftAnswers = map[string]string{}
 	}
+	if record.StructuredDraftAnswers == nil {
+		record.StructuredDraftAnswers = map[string][]string{}
+	}
 	if record.SkippedQuestionIDs == nil {
 		record.SkippedQuestionIDs = map[string]bool{}
 	}
@@ -229,6 +232,8 @@ func decisionForRequestOption(optionID string) string {
 		return "decline"
 	case "cancel":
 		return "cancel"
+	case "revise":
+		return "revise"
 	default:
 		return ""
 	}
@@ -452,6 +457,71 @@ func requestPromptQuestionsToControl(questions []state.RequestPromptQuestionReco
 	return out
 }
 
+func requestPromptStructuredFormToControl(form *state.RequestPromptStructuredFormRecord, draftAnswers map[string][]string) *control.RequestPromptStructuredForm {
+	if form == nil {
+		return nil
+	}
+	fields := make([]control.RequestPromptFormField, 0, len(form.Fields))
+	for _, field := range form.Fields {
+		name := strings.TrimSpace(field.Name)
+		if name == "" {
+			continue
+		}
+		out := control.RequestPromptFormField{
+			Name:        name,
+			Kind:        control.RequestPromptFormFieldKind(strings.TrimSpace(string(field.Kind))),
+			Label:       strings.TrimSpace(field.Label),
+			Placeholder: strings.TrimSpace(field.Placeholder),
+		}
+		for _, option := range field.Options {
+			label := strings.TrimSpace(option.Label)
+			value := strings.TrimSpace(option.Value)
+			if label == "" || value == "" {
+				continue
+			}
+			out.Options = append(out.Options, control.RequestPromptFormFieldOption{
+				Label: label,
+				Value: value,
+			})
+		}
+		if len(draftAnswers[name]) != 0 {
+			out.DefaultValues = append(out.DefaultValues, normalizedStructuredDraftValues(draftAnswers[name])...)
+		} else if len(field.DefaultValues) != 0 {
+			out.DefaultValues = append(out.DefaultValues, normalizedStructuredDraftValues(field.DefaultValues)...)
+		} else if value := strings.TrimSpace(field.DefaultValue); value != "" {
+			out.DefaultValues = []string{value}
+		}
+		if len(out.DefaultValues) != 0 {
+			out.DefaultValue = out.DefaultValues[0]
+		}
+		fields = append(fields, out)
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return &control.RequestPromptStructuredForm{
+		SubmitLabel: strings.TrimSpace(form.SubmitLabel),
+		Fields:      fields,
+	}
+}
+
+func normalizedStructuredDraftValues(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
 func buildApprovalRequestOptions(backend agentproto.Backend, semanticKind string, metadata map[string]any) []state.RequestPromptOptionRecord {
 	var options []state.RequestPromptOptionRecord
 	seen := map[string]bool{}
@@ -462,8 +532,14 @@ func buildApprovalRequestOptions(backend agentproto.Backend, semanticKind string
 			return
 		}
 		switch optionID {
-		case "accept", "acceptForSession", "decline", "cancel", "captureFeedback":
+		case "accept", "acceptForSession", "decline", "cancel", "captureFeedback", "revise":
 		default:
+			return
+		}
+		if optionID == "captureFeedback" && !approvalRequestSupportsFeedbackCapture(semanticKind) {
+			return
+		}
+		if optionID == "revise" && !approvalRequestSupportsSameRequestRevise(semanticKind) {
 			return
 		}
 		if label == "" {
@@ -477,6 +553,8 @@ func buildApprovalRequestOptions(backend agentproto.Backend, semanticKind string
 			case "cancel":
 				label = "取消"
 			case "captureFeedback":
+				label = requestFeedbackActionLabel(backend)
+			case "revise":
 				label = requestFeedbackActionLabel(backend)
 			default:
 				return
@@ -504,15 +582,23 @@ func buildApprovalRequestOptions(backend agentproto.Backend, semanticKind string
 	}
 	if len(upstreamOptions) == 0 {
 		add("accept", firstNonEmpty(metadataString(metadata, "acceptLabel"), "允许一次"), "primary")
-		if approvalRequestSupportsExtendedDecisions(semanticKind) {
+		if approvalRequestSupportsSessionGrant(semanticKind, metadata) {
 			add("acceptForSession", "本会话允许", "default")
 		}
 		add("decline", firstNonEmpty(metadataString(metadata, "declineLabel"), "拒绝"), "default")
-		if approvalRequestSupportsExtendedDecisions(semanticKind) {
+		if approvalRequestSupportsCancel(semanticKind) {
 			add("cancel", "取消", "default")
 		}
 	}
-	add("captureFeedback", requestFeedbackActionLabel(backend), "default")
+	if approvalRequestSupportsFeedbackCapture(semanticKind) {
+		add("captureFeedback", requestFeedbackActionLabel(backend), "default")
+	}
+	if approvalRequestSupportsSameRequestRevise(semanticKind) {
+		add("revise", requestFeedbackActionLabel(backend), "default")
+	}
+	if semanticKind == control.RequestSemanticPlanConfirmation {
+		return planConfirmationQuickDecisionOptions(backend)
+	}
 	return options
 }
 
@@ -630,9 +716,38 @@ func metadataRequestQuestions(metadata map[string]any) []state.RequestPromptQues
 	return questions
 }
 
-func approvalRequestSupportsExtendedDecisions(semanticKind string) bool {
+func approvalRequestSupportsSessionGrant(semanticKind string, metadata map[string]any) bool {
 	switch control.NormalizeRequestSemanticKind(semanticKind, "approval") {
 	case control.RequestSemanticApprovalCommand, control.RequestSemanticApprovalFileChange, control.RequestSemanticApprovalNetwork:
+		return true
+	case control.RequestSemanticApprovalCanUseTool:
+		return len(metadataRequestMapList(metadata["permissionSuggestions"])) != 0
+	default:
+		return false
+	}
+}
+
+func approvalRequestSupportsCancel(semanticKind string) bool {
+	switch control.NormalizeRequestSemanticKind(semanticKind, "approval") {
+	case control.RequestSemanticApprovalCommand, control.RequestSemanticApprovalFileChange, control.RequestSemanticApprovalNetwork:
+		return true
+	default:
+		return false
+	}
+}
+
+func approvalRequestSupportsFeedbackCapture(semanticKind string) bool {
+	switch control.NormalizeRequestSemanticKind(semanticKind, "approval") {
+	case control.RequestSemanticPlanConfirmation:
+		return false
+	default:
+		return true
+	}
+}
+
+func approvalRequestSupportsSameRequestRevise(semanticKind string) bool {
+	switch control.NormalizeRequestSemanticKind(semanticKind, "approval") {
+	case control.RequestSemanticPlanConfirmation:
 		return true
 	default:
 		return false
@@ -719,6 +834,8 @@ func pendingRequestNoticeText(request *state.RequestPromptRecord) string {
 		return "当前有待确认文件修改请求。请先处理这张确认卡片后再继续。"
 	case control.RequestSemanticApprovalNetwork:
 		return "当前有待确认网络访问请求。请先处理这张确认卡片后再继续。"
+	case control.RequestSemanticApprovalCanUseTool:
+		return "当前有待确认工具调用请求。请先处理这张确认卡片后再继续。"
 	case control.RequestSemanticApproval:
 		return "当前有待确认请求。请先点击卡片上的处理按钮后再继续。"
 	case control.RequestSemanticPermissionsRequestApproval:
